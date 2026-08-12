@@ -640,6 +640,27 @@ export class ClassroomService {
     });
   }
 
+  // ── Vista combinada para la app (1 sola petición HTTP) ──
+  async getOverview(studentId: bigint) {
+    // isConnected: 1 consulta ligera al pooler
+    const token = await this.prisma.googleToken.findUnique({
+      where: { studentId },
+      select: { id: true },
+    });
+    const connected = !!token;
+    if (!connected) {
+      return { connected: false, courses: [], upcoming: [], sync: { courses: 0, courseworks: 0 } };
+    }
+
+    const [sync, courses, upcoming] = await Promise.all([
+      this.syncStudent(studentId),
+      this.getCourses(studentId),
+      this.getUpcomingCoursework(studentId),
+    ]);
+
+    return { connected: true, courses, upcoming, sync };
+  }
+
   // ── Retorna próximas tareas (todos los cursos) ───────────
   // Optimizado: una sola consulta usando la relación course.studentId
   // en lugar de 2 consultas (evita un round-trip extra al pooler).
