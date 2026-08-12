@@ -540,64 +540,64 @@ export class ClassroomService {
         });
 
         // Upsert de tareas del curso (en paralelo)
-        const cwUpserts = courseworks.map(async (cw: any) => {
-          const dueDate = this.parseDueDate(cw.dueDate, cw.dueTime);
-          await this.prisma.gcCoursework.upsert({
-            where: { courseId_googleId: { courseId: gcCourse.id, googleId: cw.id! } },
-            create: {
-              courseId: gcCourse.id,
-              googleId: cw.id!,
-              title: cw.title!,
-              description: cw.description ?? null,
-              dueDate,
-              maxPoints: cw.maxPoints ?? null,
-              workType: cw.workType ?? 'ASSIGNMENT',
-              state: cw.state ?? 'PUBLISHED',
-              alternateLink: cw.alternateLink ?? null,
-            },
-            update: {
-              title: cw.title!,
-              description: cw.description ?? null,
-              dueDate,
-              maxPoints: cw.maxPoints ?? null,
-              state: cw.state ?? 'PUBLISHED',
-              syncedAt: new Date(),
-            },
-          });
-        });
-        await Promise.all(cwUpserts);
+        await Promise.all(
+          courseworks.map(async (cw: any) => {
+            const dueDate = this.parseDueDate(cw.dueDate, cw.dueTime);
+            await this.prisma.gcCoursework.upsert({
+              where: { courseId_googleId: { courseId: gcCourse.id, googleId: cw.id! } },
+              create: {
+                courseId: gcCourse.id,
+                googleId: cw.id!,
+                title: cw.title!,
+                description: cw.description ?? null,
+                dueDate,
+                maxPoints: cw.maxPoints ?? null,
+                workType: cw.workType ?? 'ASSIGNMENT',
+                state: cw.state ?? 'PUBLISHED',
+                alternateLink: cw.alternateLink ?? null,
+              },
+              update: {
+                title: cw.title!,
+                description: cw.description ?? null,
+                dueDate,
+                maxPoints: cw.maxPoints ?? null,
+                state: cw.state ?? 'PUBLISHED',
+                syncedAt: new Date(),
+              },
+            });
+          }),
+        );
         totalCourseworks += courseworks.length;
 
-        // Upsert de submissions del alumno en este curso (en paralelo)
+        // Upsert de submissions del alumno en este curso (en paralelo, con mapa)
         if (submissions.length > 0) {
           // Traer todos los courseworks del curso en 1 consulta → mapa googleId→id
           const existingCws = await this.prisma.gcCoursework.findMany({
             where: { courseId: gcCourse.id },
             select: { id: true, googleId: true },
           });
-          const cwIdByGoogle = new Map(
-            existingCws.map((c) => [c.googleId, c.id]),
-          );
+          const cwIdByGoogle = new Map(existingCws.map((c) => [c.googleId, c.id]));
 
-          const subUpserts = submissions.map(async (sub: any) => {
-            const cwId = cwIdByGoogle.get(sub.courseWorkId!);
-            if (!cwId) return;
-            await this.prisma.gcStudentSubmission.upsert({
-              where: { courseworkId_googleId: { courseworkId: cwId, googleId: sub.id! } },
-              create: {
-                courseworkId: cwId,
-                googleId: sub.id!,
-                submissionState: sub.state ?? 'NEW',
-                assignedGrade: sub.assignedGrade ?? null,
-              },
-              update: {
-                submissionState: sub.state ?? 'NEW',
-                assignedGrade: sub.assignedGrade ?? null,
-                syncedAt: new Date(),
-              },
-            });
-          });
-          await Promise.all(subUpserts);
+          await Promise.all(
+            submissions.map(async (sub: any) => {
+              const cwId = cwIdByGoogle.get(sub.courseWorkId!);
+              if (!cwId) return;
+              await this.prisma.gcStudentSubmission.upsert({
+                where: { courseworkId_googleId: { courseworkId: cwId, googleId: sub.id! } },
+                create: {
+                  courseworkId: cwId,
+                  googleId: sub.id!,
+                  submissionState: sub.state ?? 'NEW',
+                  assignedGrade: sub.assignedGrade ?? null,
+                },
+                update: {
+                  submissionState: sub.state ?? 'NEW',
+                  assignedGrade: sub.assignedGrade ?? null,
+                  syncedAt: new Date(),
+                },
+              });
+            }),
+          );
         }
 
         return gcCourse;
