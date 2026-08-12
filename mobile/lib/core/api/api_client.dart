@@ -12,11 +12,14 @@ class ApiClient {
   // Flag explícito: solo se activa si el desarrollador pasa KOLEXA_DEV_HOST
   // en el build. En producción (sin el flag) siempre usamos api.kolexa.pe.
   static const bool _useDevHost = bool.fromEnvironment('KOLEXA_DEV_HOST');
+  static const bool _useRailway = bool.fromEnvironment('KOLEXA_USE_RAILWAY');
   static final String _baseUrl = kReleaseMode
       ? (_useDevHost
           ? 'http://$_devHost:3000/api/v1/'
-          : 'https://api.kolexa.pe/api/v1/')
-      : 'http://$_devHost:3000/api/v1/';
+          : 'https://kolexa-production.up.railway.app/api/v1/')
+      : (_useRailway
+          ? 'https://kolexa-production.up.railway.app/api/v1/'
+          : 'http://$_devHost:3000/api/v1/');
 
   // La instancia de Dio que usamos para hacer peticiones
   late final Dio _dio;

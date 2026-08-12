@@ -55,10 +55,9 @@ async function bootstrap() {
   // Lee el puerto del archivo .env, o usa 3000 por defecto
   const port = process.env.PORT ?? 3000;
 
-  // Inicia el servidor y comienza a escuchar peticiones
-  await app.listen(port);
+  await app.listen(port, '0.0.0.0');
 
-  console.log(`🚀 Kolexa Backend corriendo en: http://localhost:${port}/api/v1`);
+  console.log(`🚀 Kolexa Backend corriendo en: http://0.0.0.0:${port}/api/v1`);
 }
 
 // Ejecuta la función bootstrap para arrancar el servidor
