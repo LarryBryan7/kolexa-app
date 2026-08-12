@@ -27,19 +27,15 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: any): Promise<UserPayload> {
-    // Verificar que el usuario sigue existiendo y está activo.
-    // Un usuario podría haber sido desactivado después de obtener el token.
     const user = await this.prisma.user.findFirst({
       where: {
         id: BigInt(payload.sub),
         isActive: true,
         deletedAt: null, // no está eliminado
       },
-      include: {
-        // Cargamos los roles para incluirlos en el payload
-        userRoles: {
-          include: { role: true },
-        },
+      select: {
+        id: true,
+        email: true,
       },
     });
 
@@ -47,12 +43,22 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('Usuario no encontrado o inactivo');
     }
 
-    // Retornamos el objeto que quedará en request.user
+    let schoolId: bigint | undefined;
+    if (payload.schoolId) {
+      schoolId = BigInt(payload.schoolId);
+    } else {
+      const role = await this.prisma.userRole.findFirst({
+        where: { userId: user.id },
+        select: { schoolId: true },
+      });
+      schoolId = role?.schoolId ?? undefined;
+    }
+
     return {
       sub: user.id,
       email: user.email,
-      roles: user.userRoles.map((ur) => ur.role.name),
-      schoolId: user.userRoles[0]?.schoolId ?? undefined,
+      roles: payload.roles ?? [],
+      schoolId,
     };
   }
 }
