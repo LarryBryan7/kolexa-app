@@ -456,6 +456,7 @@ export class ClassroomService {
 
   // ── Sincroniza cursos y tareas desde Google Classroom ────
   async syncStudent(studentId: bigint): Promise<{ courses: number; courseworks: number }> {
+    const tCacheStart = Date.now();
     const [lastCourse, cachedCourses, cachedCourseworks] = await Promise.all([
       this.prisma.gcCourse.findFirst({
         where: { studentId },
@@ -465,7 +466,15 @@ export class ClassroomService {
       this.prisma.gcCourse.count({ where: { studentId } }),
       this.prisma.gcCoursework.count({ where: { course: { studentId } } }),
     ]);
-    if (lastCourse && Date.now() - lastCourse.syncedAt.getTime() < 5 * 60 * 1000) {
+    const tCacheMs = Date.now() - tCacheStart;
+    const diffMs = lastCourse ? Date.now() - lastCourse.syncedAt.getTime() : -1;
+    const cacheHit = !!lastCourse && diffMs < 5 * 60 * 1000;
+    console.log(
+      `[SYNC-DIAG] studentId=${studentId} lastCourse=${lastCourse?.syncedAt?.toISOString() ?? 'null'} ` +
+        `now=${new Date().toISOString()} diffMs=${diffMs} cacheHit=${cacheHit} ` +
+        `cacheQueriesMs=${tCacheMs} courses=${cachedCourses} courseworks=${cachedCourseworks}`,
+    );
+    if (cacheHit) {
       return { courses: cachedCourses, courseworks: cachedCourseworks };
     }
 
