@@ -383,23 +383,14 @@ class _HomeV2PageState extends State<HomeV2Page> with WidgetsBindingObserver {
                           const SizedBox(height: 12),
 
                           // ── Row: esta semana ───────────────────
-                          // Solo se muestra si el alumno ya está
-                          // conectado a Google Classroom.
-                          FutureBuilder<bool>(
-                            future: _classroomStatusFuture,
-                            builder: (context, snap) {
-                              final connected = snap.data ?? false;
-                              if (!connected) return const SizedBox.shrink();
-                              return Column(
-                                children: [
-                                  _EstaSemanRow(
-                                    child: children[safeIndex],
-                                    refreshKey: _refreshKey,
-                                  ),
-                                  const SizedBox(height: 12),
-                                ],
-                              );
-                            },
+                          Column(
+                            children: [
+                              _EstaSemanRow(
+                                child: children[safeIndex],
+                                refreshKey: _refreshKey,
+                              ),
+                              const SizedBox(height: 12),
+                            ],
                           ),
 
                           // ── Card: conectar Google Classroom ─────
@@ -1627,6 +1618,7 @@ class _EstaSemanRow extends StatefulWidget {
 class _EstaSemanRowState extends State<_EstaSemanRow> {
   int? _count;
   List<GcCoursework>? _items;
+  bool? _connected;
 
   @override
   void initState() {
@@ -1648,8 +1640,9 @@ class _EstaSemanRowState extends State<_EstaSemanRow> {
   Future<void> _load() async {
     try {
       final repo = ClassroomRepository(context.read<ApiClient>());
-      final all = await repo.getUpcoming(widget.child.studentId);
+      final status = await repo.getUpcomingStatus(widget.child.studentId);
       if (!mounted) return;
+      final all = status.upcoming;
       final now = DateTime.now();
       final monday = now.subtract(Duration(days: now.weekday - 1));
       final weekStart = DateTime(monday.year, monday.month, monday.day);
@@ -1660,6 +1653,7 @@ class _EstaSemanRowState extends State<_EstaSemanRow> {
         return !d.isBefore(weekStart) && !d.isAfter(weekEnd);
       }).length;
       setState(() {
+        _connected = status.connected;
         _count = count;
         _items = all;
       });
@@ -1676,6 +1670,7 @@ class _EstaSemanRowState extends State<_EstaSemanRow> {
 
   @override
   Widget build(BuildContext context) {
+    if (_connected == false) return const SizedBox.shrink();
     return GestureDetector(
       onTap: () => Navigator.push(
         context,

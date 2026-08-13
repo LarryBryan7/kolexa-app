@@ -770,6 +770,19 @@ export class ClassroomService {
   }
 
   // ── Verifica si el alumno tiene cuenta conectada ─────────
+  async getUpcomingStatus(studentId: bigint) {
+    const token = await this.prisma.googleToken.findUnique({
+      where: { studentId },
+      select: { id: true },
+    });
+    const connected = !!token;
+    if (!connected) {
+      return { connected: false, upcoming: [] };
+    }
+    const upcoming = await this.getUpcomingCoursework(studentId);
+    return { connected: true, upcoming };
+  }
+
   async isConnected(studentId: bigint): Promise<boolean> {
     const token = await this.prisma.googleToken.findUnique({
       where: { studentId },
