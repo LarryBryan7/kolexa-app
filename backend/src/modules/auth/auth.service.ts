@@ -54,16 +54,24 @@ export class AuthService {
       throw new UnauthorizedException('Credenciales incorrectas');
     }
 
-    // 3. Guardar el token de Firebase para push notifications
-    if (dto.firebaseToken) {
-      await this.savePushToken(user.id, dto.firebaseToken);
-    }
     const _tTokens = Date.now();
 
-    // 4. Generar los tokens JWT
     const roles = rolesData.map((r) => r.roleName).filter((n): n is string => n !== null);
     const schoolId = rolesData[0]?.schoolId ?? null;
-    const tokens = await this.generateTokens(user, roles, schoolId);
+
+    const [tokens] = await Promise.all([
+      this.generateTokens(user, roles, schoolId),
+      (async () => {
+        if (dto.firebaseToken) {
+          try {
+            await this.savePushToken(user.id, dto.firebaseToken);
+          } catch (err) {
+            // savePushToken no debe bloquear ni romper el login.
+            console.error('[AUTH-LOGIN] Error al guardar push token:', err);
+          }
+        }
+      })(),
+    ]);
 
     // 5. Cargar hijos si es padre de familia
     const isParent = rolesData.some((r) => r.roleName === 'parent');
