@@ -54,6 +54,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   ) async {
     // 1. Mostrar indicador de carga
     emit(const AuthLoading());
+    final _t0 = DateTime.now().millisecondsSinceEpoch;
 
     try {
       // 2. Llamar al Repository (que llama al DataSource → Backend)
@@ -65,6 +66,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
 
       // 3. Login exitoso → emitir estado autenticado con los datos del usuario
       emit(AuthAuthenticated(user));
+      print('[FLOW] login-to-authenticated = '
+          '${DateTime.now().millisecondsSinceEpoch - _t0} ms');
     } catch (e) {
       // 4. Login fallido → emitir error con mensaje legible
       // e.toString() incluye el mensaje que pusimos en _handleError() del ApiClient
