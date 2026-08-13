@@ -126,6 +126,13 @@ export class ClassroomController {
     return this.classroomService.getParentTodaySummary();
   }
 
+  // ── GET /classroom/parent/home?studentId=X ───────────────
+  @UseGuards(JwtAuthGuard)
+  @Get('parent/home')
+  async getParentHome(@Query('studentId') studentId: string) {
+    return this.classroomService.getParentHome(BigInt(studentId));
+  }
+
   // ── GET /classroom/student/:studentId/status ──────────────
   @UseGuards(JwtAuthGuard)
   @Get('student/:studentId/status')

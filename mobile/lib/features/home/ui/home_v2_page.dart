@@ -70,6 +70,7 @@ class _HomeV2PageState extends State<HomeV2Page> with WidgetsBindingObserver {
   bool _showManualVerify = false;
   Timer? _verifyTimeout;
   Future<bool>? _classroomStatusFuture;
+  ParentHomeData? _parentHome;
 
   @override
   void initState() {
@@ -117,7 +118,19 @@ class _HomeV2PageState extends State<HomeV2Page> with WidgetsBindingObserver {
     }
   }
 
-  void _switchChild(int index) => setState(() => _selectedChild = index);
+  void _switchChild(int index) {
+    setState(() {
+      _selectedChild = index;
+      // Limpiar los datos del hijo anterior para no mostrar datos cruzados.
+      _parentHome = null;
+    });
+    final authState = context.read<AuthBloc>().state;
+    final children = _buildChildren(authState);
+    if (children.isNotEmpty) {
+      final studentId = children[index.clamp(0, children.length - 1)].studentId;
+      _loadParentHome(studentId);
+    }
+  }
 
   String? _currentStudentId() {
     final authState = context.read<AuthBloc>().state;
@@ -137,6 +150,7 @@ class _HomeV2PageState extends State<HomeV2Page> with WidgetsBindingObserver {
       setState(() {
         _classroomStatusFuture = statusFuture;
       });
+      _loadParentHome(studentId);
       final connected = await statusFuture;
       if (connected) {
         try {
@@ -145,11 +159,27 @@ class _HomeV2PageState extends State<HomeV2Page> with WidgetsBindingObserver {
           // Sync falla silenciosamente — los datos locales siguen cargando.
         }
       }
-      // Refrescamos la card "Esta semana" DESPUÉS del sync para que el
-      // conteo de pendientes ya incluya los datos recién traídos.
-      if (mounted) setState(() => _refreshKey++);
+      // Refrescamos los cards DESPUÉS del sync para que el conteo de
+      // pendientes ya incluya los datos recién traídos.
+      _loadParentHome(studentId);
     } else {
       setState(() => _refreshKey++);
+    }
+  }
+
+  /// Carga los datos combinados del home del padre en UNA sola petición.
+  /// `_NovedadesCard` y `_EstaSemanRow` consumen este resultado compartido.
+  Future<void> _loadParentHome(String studentId) async {
+    try {
+      final repo = ClassroomRepository(context.read<ApiClient>());
+      final data = await repo.getParentHome(studentId);
+      if (!mounted) return;
+      setState(() {
+        _parentHome = data;
+        _refreshKey++;
+      });
+    } catch (_) {
+      // Error de red: mantener los datos anteriores sin romper la UI.
     }
   }
 
@@ -224,7 +254,12 @@ class _HomeV2PageState extends State<HomeV2Page> with WidgetsBindingObserver {
   }
 
   void _selectChild(int index) {
-    setState(() => _selectedChild = index);
+    setState(() {
+      _selectedChild = index;
+      // Limpiar los datos del hijo anterior para no mostrar datos cruzados
+      // mientras cargan los del hijo recién seleccionado.
+      _parentHome = null;
+    });
     // Recalcular el estado de conexión de Classroom del hijo recién
     // seleccionado para que la card de conectar se muestre/oculte bien.
     final authState = context.read<AuthBloc>().state;
@@ -233,6 +268,8 @@ class _HomeV2PageState extends State<HomeV2Page> with WidgetsBindingObserver {
       final studentId = children[index.clamp(0, children.length - 1)].studentId;
       _classroomStatusFuture =
           ClassroomRepository(context.read<ApiClient>()).isConnected(studentId);
+      // Cargar los datos combinados del nuevo hijo.
+      _loadParentHome(studentId);
     }
   }
 
@@ -379,6 +416,9 @@ class _HomeV2PageState extends State<HomeV2Page> with WidgetsBindingObserver {
                           _NovedadesCard(
                             child: children[safeIndex],
                             dateLabel: dateStr,
+                            summary: _parentHome?.todaySummary,
+                            onRefresh: () => _loadParentHome(
+                                children[safeIndex].studentId),
                           ),
                           const SizedBox(height: 12),
 
@@ -388,6 +428,7 @@ class _HomeV2PageState extends State<HomeV2Page> with WidgetsBindingObserver {
                               _EstaSemanRow(
                                 child: children[safeIndex],
                                 refreshKey: _refreshKey,
+                                upcomingStatus: _parentHome?.upcomingStatus,
                               ),
                               const SizedBox(height: 12),
                             ],
@@ -830,7 +871,17 @@ class _ChildInfoCard extends StatelessWidget {
 class _NovedadesCard extends StatefulWidget {
   final _Child child;
   final String dateLabel;
-  const _NovedadesCard({required this.child, required this.dateLabel});
+  /// Resumen de hoy compartido desde el estado padre (cargado por
+  /// /parent/home en la misma petición que "Esta semana").
+  final TodaySummary? summary;
+  /// Callback para refrescar los datos desde el padre.
+  final VoidCallback onRefresh;
+  const _NovedadesCard({
+    required this.child,
+    required this.dateLabel,
+    required this.summary,
+    required this.onRefresh,
+  });
 
   @override
   State<_NovedadesCard> createState() => _NovedadesCardState();
@@ -838,7 +889,6 @@ class _NovedadesCard extends StatefulWidget {
 
 class _NovedadesCardState extends State<_NovedadesCard>
     with WidgetsBindingObserver {
-  late Future<TodaySummary> _summaryFuture;
   TodaySummary? _summary;
   bool _initialized = false;
   Timer? _scheduleTimer;
@@ -848,8 +898,22 @@ class _NovedadesCardState extends State<_NovedadesCard>
     super.didChangeDependencies();
     if (!_initialized) {
       _initialized = true;
-      _loadSummary();
       _startAutoRefresh();
+    }
+  }
+
+  @override
+  void didUpdateWidget(_NovedadesCard old) {
+    super.didUpdateWidget(old);
+    // Cambió el hijo: limpiar los datos del hijo anterior para no mostrar
+    // datos cruzados mientras cargan los del nuevo.
+    if (old.child.studentId != widget.child.studentId) {
+      setState(() => _summary = null);
+    }
+    if (old.summary != widget.summary && widget.summary != null) {
+      setState(() {
+        _summary = widget.summary;
+      });
     }
   }
 
@@ -857,6 +921,9 @@ class _NovedadesCardState extends State<_NovedadesCard>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Si el padre ya tiene datos cargados (p. ej. al cambiar de hijo),
+    // usarlos de inmediato en lugar de mostrar el estado de carga.
+    _summary = widget.summary;
   }
 
   @override
@@ -880,21 +947,7 @@ class _NovedadesCardState extends State<_NovedadesCard>
 
   void _handleDataRefresh() {
     if (!mounted) return;
-    _loadSummary();
-  }
-
-  Future<void> _loadSummary() async {
-    final repo = ClassroomRepository(context.read<ApiClient>());
-    final future = repo.getParentTodaySummary();
-    setState(() {
-      _summaryFuture = future;
-    });
-    try {
-      final s = await future;
-      if (mounted) setState(() => _summary = s);
-    } catch (_) {
-      // Error de red: mantener el resumen anterior sin romper la UI.
-    }
+    widget.onRefresh();
   }
 
   void _recalculateSchedule() {
@@ -980,45 +1033,25 @@ class _NovedadesCardState extends State<_NovedadesCard>
             ),
             const SizedBox(height: 16),
             if (_summary == null)
-              FutureBuilder<TodaySummary>(
-                future: _summaryFuture,
-                builder: (context, snap) {
-                  if (snap.hasData) {
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (mounted) setState(() => _summary = snap.data);
-                    });
-                  }
-                  final s = snap.data;
-                  return Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _NovedadItem(
-                        iconAsset: 'assets/icons/ic_llegada.svg',
-                        label: 'Llegada',
-                        value: s?.arrivalLabel ?? 'Sin asistencia',
-                        valueColor: s?.arrivalStatus == 'present'
-                            ? const Color(0xFF1F6B44)
-                            : s?.arrivalStatus == 'late'
-                                ? const Color(0xFF96650C)
-                                : s?.arrivalStatus == 'absent'
-                                    ? Colors.red[700]
-                                    : s?.arrivalStatus == 'justified'
-                                        ? const Color(0xFF5B4A9E)
-                                        : _kTextGray,
-                      ),
-                      _NovedadItem(
-                        iconAsset: 'assets/icons/ic_ahora.svg',
-                        label: 'Ahora',
-                        value: s?.currentCourse ?? '–',
-                      ),
-                      _NovedadItem(
-                        iconAsset: 'assets/icons/ic_fotos.svg',
-                        label: 'Fotos',
-                        value: s?.photoLabel ?? '–',
-                      ),
-                    ],
-                  );
-                },
+              const Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _NovedadItem(
+                    iconAsset: 'assets/icons/ic_llegada.svg',
+                    label: 'Llegada',
+                    value: 'Cargando...',
+                  ),
+                  _NovedadItem(
+                    iconAsset: 'assets/icons/ic_ahora.svg',
+                    label: 'Ahora',
+                    value: '–',
+                  ),
+                  _NovedadItem(
+                    iconAsset: 'assets/icons/ic_fotos.svg',
+                    label: 'Fotos',
+                    value: '–',
+                  ),
+                ],
               )
             else
               Row(
@@ -1609,7 +1642,14 @@ class _UrgentCard extends StatelessWidget {
 class _EstaSemanRow extends StatefulWidget {
   final _Child child;
   final int refreshKey;
-  const _EstaSemanRow({required this.child, required this.refreshKey});
+  /// upcomingStatus compartido desde el estado padre (cargado por
+  /// /parent/home en la misma petición que "Novedades").
+  final UpcomingStatus? upcomingStatus;
+  const _EstaSemanRow({
+    required this.child,
+    required this.refreshKey,
+    required this.upcomingStatus,
+  });
 
   @override
   State<_EstaSemanRow> createState() => _EstaSemanRowState();
@@ -1623,43 +1663,53 @@ class _EstaSemanRowState extends State<_EstaSemanRow> {
   @override
   void initState() {
     super.initState();
-    _load();
+    _applyStatus(widget.upcomingStatus);
   }
 
   @override
   void didUpdateWidget(_EstaSemanRow old) {
     super.didUpdateWidget(old);
-    // Recargar cuando cambia el hijo o cuando el home se refresca
-    // (p. ej. al volver de conectar Google Classroom).
+    // Recalcular cuando cambia el hijo, el home se refresca o llegan datos
+    // nuevos del padre (p. ej. al volver de conectar Google Classroom).
+    if (old.child.studentId != widget.child.studentId) {
+      // Cambió el hijo: limpiar los datos del hijo anterior para no mostrar
+      // datos cruzados mientras cargan los del nuevo.
+      setState(() {
+        _count = null;
+        _items = null;
+        _connected = null;
+      });
+    }
     if (old.child.studentId != widget.child.studentId ||
-        old.refreshKey != widget.refreshKey) {
-      _load();
+        old.refreshKey != widget.refreshKey ||
+        old.upcomingStatus != widget.upcomingStatus) {
+      _applyStatus(widget.upcomingStatus);
     }
   }
 
-  Future<void> _load() async {
-    try {
-      final repo = ClassroomRepository(context.read<ApiClient>());
-      final status = await repo.getUpcomingStatus(widget.child.studentId);
-      if (!mounted) return;
-      final all = status.upcoming;
-      final now = DateTime.now();
-      final monday = now.subtract(Duration(days: now.weekday - 1));
-      final weekStart = DateTime(monday.year, monday.month, monday.day);
-      final weekEnd = weekStart.add(const Duration(days: 6, hours: 23, minutes: 59, seconds: 59));
-      final count = all.where((cw) {
-        if (cw.dueDate == null) return false;
-        final d = DateTime(cw.dueDate!.year, cw.dueDate!.month, cw.dueDate!.day);
-        return !d.isBefore(weekStart) && !d.isAfter(weekEnd);
-      }).length;
-      setState(() {
-        _connected = status.connected;
-        _count = count;
-        _items = all;
-      });
-    } catch (_) {
-      // No mostrar error si falla el conteo
+  // Deriva el conteo semanal desde el upcomingStatus compartido. No hace
+  // ninguna llamada de red propia: los datos vienen de /parent/home.
+  void _applyStatus(UpcomingStatus? status) {
+    if (status == null) {
+      // Aún no hay datos: mantener el estado de carga.
+      if (_count == null && _connected == null) return;
+      return;
     }
+    final all = status.upcoming;
+    final now = DateTime.now();
+    final monday = now.subtract(Duration(days: now.weekday - 1));
+    final weekStart = DateTime(monday.year, monday.month, monday.day);
+    final weekEnd = weekStart.add(const Duration(days: 6, hours: 23, minutes: 59, seconds: 59));
+    final count = all.where((cw) {
+      if (cw.dueDate == null) return false;
+      final d = DateTime(cw.dueDate!.year, cw.dueDate!.month, cw.dueDate!.day);
+      return !d.isBefore(weekStart) && !d.isAfter(weekEnd);
+    }).length;
+    setState(() {
+      _connected = status.connected;
+      _count = count;
+      _items = all;
+    });
   }
 
   String get _subtitle {
