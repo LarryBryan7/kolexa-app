@@ -15,12 +15,9 @@ class ClassroomRepository {
     return res.data['connected'] as bool;
   }
 
-  Future<Map<String, int>> sync(String studentId) async {
+  Future<SyncResult> sync(String studentId) async {
     final res = await _api.post('classroom/student/$studentId/sync');
-    return {
-      'courses': res.data['courses'] as int,
-      'courseworks': res.data['courseworks'] as int,
-    };
+    return SyncResult.fromJson(res.data as Map<String, dynamic>);
   }
 
   Future<List<GcCourse>> getCourses(String studentId) async {
@@ -209,4 +206,21 @@ class TodaySummary {
   }
 
   String get photoLabel => photoCount > 0 ? '$photoCount nueva${photoCount != 1 ? 's' : ''}' : '–';
+}
+
+class SyncResult {
+  final int courses;
+  final int courseworks;
+  final bool cacheHit;
+  const SyncResult({
+    required this.courses,
+    required this.courseworks,
+    required this.cacheHit,
+  });
+
+  factory SyncResult.fromJson(Map<String, dynamic> json) => SyncResult(
+        courses: json['courses'] as int? ?? 0,
+        courseworks: json['courseworks'] as int? ?? 0,
+        cacheHit: json['cacheHit'] as bool? ?? false,
+      );
 }

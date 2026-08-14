@@ -68,6 +68,7 @@ class _HomeV2PageState extends State<HomeV2Page> with WidgetsBindingObserver {
   bool _wentToClassroomBrowser = false;
   bool _waitingClassroomConfirm = false;
   bool _connectingClassroom = false;
+  bool _refreshing = false;
   bool _showManualVerify = false;
   Timer? _verifyTimeout;
   Future<bool>? _classroomStatusFuture;
@@ -99,9 +100,10 @@ class _HomeV2PageState extends State<HomeV2Page> with WidgetsBindingObserver {
         if (children.isNotEmpty) {
           final sid = children[_selectedChild.clamp(0, children.length - 1)].studentId;
           final known = _knownConnected[sid];
-          if (known != null) {
-            setState(() => _classroomConnected = known);
-          }
+          setState(() {
+            if (known != null) _classroomConnected = known;
+            _classroomStatusFuture = Future.value(known ?? false);
+          });
         }
       }
     });
@@ -152,13 +154,10 @@ class _HomeV2PageState extends State<HomeV2Page> with WidgetsBindingObserver {
     final children = _buildChildren(authState);
     if (children.isNotEmpty) {
       final studentId = children[index.clamp(0, children.length - 1)].studentId;
-      setState(() => _classroomConnected = _knownConnected[studentId]);
-      _classroomStatusFuture =
-          ClassroomRepository(context.read<ApiClient>()).isConnected(studentId);
-      // Cuando isConnected resuelve, actualizamos y persistimos el estado.
-      _classroomStatusFuture!.then((connected) {
-        if (mounted) setState(() => _classroomConnected = connected);
-        _rememberConnected(studentId, connected);
+      final known = _knownConnected[studentId] ?? false;
+      setState(() {
+        _classroomConnected = known;
+        _classroomStatusFuture = Future.value(known);
       });
       _loadParentHome(studentId);
     }
@@ -181,51 +180,69 @@ class _HomeV2PageState extends State<HomeV2Page> with WidgetsBindingObserver {
   }
 
   Future<void> _onRefresh({bool showErrors = false}) async {
-    final authState = context.read<AuthBloc>().state;
-    final children = _buildChildren(authState);
-    if (children.isNotEmpty) {
-      final studentId = children[_selectedChild.clamp(0, children.length - 1)].studentId;
-      final api = context.read<ApiClient>();
-      final repo = ClassroomRepository(api);
-      final statusFuture = repo.isConnected(studentId);
-      setState(() {
-        _classroomStatusFuture = statusFuture;
-      });
-      _loadParentHome(studentId);
-      final connected = await statusFuture;
-      if (mounted) setState(() => _classroomConnected = connected);
-      // Persistimos el estado de conexión para la próxima entrada.
-      _rememberConnected(studentId, connected);
-      if (connected) {
-        try {
-          await repo.sync(studentId);
-        } catch (_) {
-          // Sync falla silenciosamente — los datos locales siguen cargando.
+    if (_refreshing) return;
+    _refreshing = true;
+    try {
+      final authState = context.read<AuthBloc>().state;
+      final children = _buildChildren(authState);
+      if (children.isNotEmpty) {
+        final studentId = children[_selectedChild.clamp(0, children.length - 1)].studentId;
+        final api = context.read<ApiClient>();
+        final repo = ClassroomRepository(api);
+        final home = await _loadParentHome(studentId);
+        if (!mounted) return;
+        final connected = home?.upcomingStatus.connected ?? false;
+        // Sincronizamos la card "Conectar" de forma determinista con el dato
+        // del servidor (redundante con _loadParentHome, pero explícito).
+        setState(() {
+          _classroomStatusFuture = Future.value(connected);
+          _classroomConnected = connected;
+        });
+        // El sync solo tiene sentido si el alumno está conectado a Google
+        // Classroom (según el backend). Si no lo está, se omite.
+        if (connected) {
+          try {
+            final result = await repo.sync(studentId);
+            if (!result.cacheHit) {
+              await _loadParentHome(studentId);
+            }
+          } catch (_) {
+            // Sync falla silenciosamente — los datos locales siguen cargando.
+          }
         }
+      } else {
+        setState(() => _refreshKey++);
       }
-      // Refrescamos los cards DESPUÉS del sync para que el conteo de
-      // pendientes ya incluya los datos recién traídos.
-      _loadParentHome(studentId);
-    } else {
-      setState(() => _refreshKey++);
+    } finally {
+      _refreshing = false;
     }
   }
 
   /// Carga los datos combinados del home del padre en UNA sola petición.
   /// `_NovedadesCard` y `_EstaSemanRow` consumen este resultado compartido.
-  Future<void> _loadParentHome(String studentId) async {
+  Future<ParentHomeData?> _loadParentHome(String studentId) async {
     try {
       final repo = ClassroomRepository(context.read<ApiClient>());
       final data = await repo.getParentHome(studentId);
-      if (!mounted) return;
+      if (!mounted) return null;
       setState(() {
         _parentHome = data;
         _refreshKey++;
+        final serverConnected = data.upcomingStatus.connected;
+        if (serverConnected != _classroomConnected) {
+          _classroomConnected = serverConnected;
+          _classroomStatusFuture = Future.value(serverConnected);
+        }
       });
+      if (data.upcomingStatus.connected != _knownConnected[studentId]) {
+        _rememberConnected(studentId, data.upcomingStatus.connected);
+      }
       print('[FLOW] home-to-first-data = '
           '${DateTime.now().millisecondsSinceEpoch - _homeStartMs} ms');
+      return data;
     } catch (_) {
       // Error de red: mantener los datos anteriores sin romper la UI.
+      return null;
     }
   }
 
@@ -323,13 +340,10 @@ class _HomeV2PageState extends State<HomeV2Page> with WidgetsBindingObserver {
     final children = _buildChildren(authState);
     if (children.isNotEmpty) {
       final studentId = children[index.clamp(0, children.length - 1)].studentId;
-      setState(() => _classroomConnected = _knownConnected[studentId]);
-      _classroomStatusFuture =
-          ClassroomRepository(context.read<ApiClient>()).isConnected(studentId);
-      // Cuando isConnected resuelve, actualizamos y persistimos el estado.
-      _classroomStatusFuture!.then((connected) {
-        if (mounted) setState(() => _classroomConnected = connected);
-        _rememberConnected(studentId, connected);
+      final known = _knownConnected[studentId] ?? false;
+      setState(() {
+        _classroomConnected = known;
+        _classroomStatusFuture = Future.value(known);
       });
       // Cargar los datos combinados del nuevo hijo.
       _loadParentHome(studentId);
@@ -506,7 +520,9 @@ class _HomeV2PageState extends State<HomeV2Page> with WidgetsBindingObserver {
                             future: _classroomStatusFuture,
                             builder: (context, snap) {
                               final connected = snap.data ?? true;
-                              if (connected) return const SizedBox.shrink();
+                              if (connected && !_waitingClassroomConfirm) {
+                                return const SizedBox.shrink();
+                              }
                               return Column(
                                 children: [
                                   _ClassroomConnectCardParent(

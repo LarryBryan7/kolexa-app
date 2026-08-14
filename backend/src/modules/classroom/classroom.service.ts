@@ -455,7 +455,7 @@ export class ClassroomService {
   }
 
   // ── Sincroniza cursos y tareas desde Google Classroom ────
-  async syncStudent(studentId: bigint): Promise<{ courses: number; courseworks: number }> {
+  async syncStudent(studentId: bigint): Promise<{ courses: number; courseworks: number; cacheHit: boolean }> {
     type CacheRow = {
       last_synced_at: Date | null;
       course_count: bigint;
@@ -474,7 +474,7 @@ export class ClassroomService {
     const diffMs = lastSyncedAt ? Date.now() - lastSyncedAt.getTime() : -1;
     const cacheHit = !!lastSyncedAt && diffMs < 15 * 60 * 1000;
     if (cacheHit) {
-      return { courses: cachedCourses, courseworks: cachedCourseworks };
+      return { courses: cachedCourses, courseworks: cachedCourseworks, cacheHit: true };
     }
 
     const auth = await this.getAuthClientForStudent(studentId);
@@ -613,7 +613,7 @@ export class ClassroomService {
       });
     }
 
-    return { courses: perCourse.length, courseworks: totalCourseworks };
+    return { courses: perCourse.length, courseworks: totalCourseworks, cacheHit: false };
   }
 
   // ── Retorna los cursos sincronizados del alumno ──────────
