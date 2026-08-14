@@ -1727,7 +1727,7 @@ class _EstaSemanRowState extends State<_EstaSemanRow> {
 
   @override
   Widget build(BuildContext context) {
-    if (_connected == false) return const SizedBox.shrink();
+    if (_connected != true) return const SizedBox.shrink();
     return GestureDetector(
       onTap: () => Navigator.push(
         context,

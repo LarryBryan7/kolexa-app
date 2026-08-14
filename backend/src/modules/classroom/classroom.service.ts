@@ -513,25 +513,35 @@ export class ClassroomService {
 
     let totalCourseworks = 0;
 
-    // 3a. Upsert de todos los cursos (secuencial, 1 consulta por curso)
+    // 3a. Upsert de todos los cursos en lotes de máximo 5 (connection_limit=5).
+    //     9 cursos → 2 lotes (5+4) en vez de 9 round-trips secuenciales.
     const courseIdByGoogle = new Map<string, bigint>();
-    for (const { course } of perCourse) {
-      const gcCourse = await this.prisma.gcCourse.upsert({
-        where: { studentId_googleId: { studentId, googleId: course.id! } },
-        create: {
-          studentId,
-          googleId: course.id!,
-          name: course.name!,
-          section: course.section ?? null,
-          teacherName: course.teacherFolder?.title ?? null,
-        },
-        update: {
-          name: course.name!,
-          section: course.section ?? null,
-          syncedAt: new Date(),
-        },
-      });
-      courseIdByGoogle.set(course.id!, gcCourse.id);
+    const BATCH = 5;
+    for (let i = 0; i < perCourse.length; i += BATCH) {
+      const batch = perCourse.slice(i, i + BATCH);
+      const results = await Promise.all(
+        batch.map(async ({ course }) => {
+          const gcCourse = await this.prisma.gcCourse.upsert({
+            where: { studentId_googleId: { studentId, googleId: course.id! } },
+            create: {
+              studentId,
+              googleId: course.id!,
+              name: course.name!,
+              section: course.section ?? null,
+              teacherName: course.teacherFolder?.title ?? null,
+            },
+            update: {
+              name: course.name!,
+              section: course.section ?? null,
+              syncedAt: new Date(),
+            },
+          });
+          return { googleId: course.id!, id: gcCourse.id };
+        }),
+      );
+      for (const r of results) {
+        courseIdByGoogle.set(r.googleId, r.id);
+      }
     }
 
     // 3b. Courseworks: createMany global con skipDuplicates (inserta solo los nuevos)
