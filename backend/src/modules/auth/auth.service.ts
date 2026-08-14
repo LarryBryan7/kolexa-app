@@ -26,9 +26,7 @@ export class AuthService {
   // ── LOGIN ──────────────────────────────────────────────
   // Verifica credenciales y devuelve accessToken + refreshToken
   async login(dto: LoginDto) {
-    const _t0 = Date.now();
     // 1. Buscar el usuario por email en la BD (solo campos directos, sin joins)
-    const _tFind = Date.now();
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
       select: {
@@ -36,27 +34,24 @@ export class AuthService {
         avatar: true, needsPasswordChange: true, isActive: true, deletedAt: true,
       },
     });
-    const _tBcrypt = Date.now();
 
     if (!user || !user.isActive || user.deletedAt) {
       throw new UnauthorizedException('Credenciales incorrectas');
     }
 
-    const _tParallel = Date.now();
     const [isPasswordValid, rolesData, studentsData] = await Promise.all([
       bcrypt.compare(dto.password, user.passwordHash),
       this._loadRolesForLogin(user.id),
       this._loadStudentsForLogin(user.id),
     ]);
-    const _tPush = Date.now();
 
     if (!isPasswordValid) {
       throw new UnauthorizedException('Credenciales incorrectas');
     }
 
-    const _tTokens = Date.now();
-
-    const roles = rolesData.map((r) => r.roleName).filter((n): n is string => n !== null);
+    const roles = rolesData
+      .map((r) => r.roleName)
+      .filter((n): n is string => n !== null && n !== undefined);
     const schoolId = rolesData[0]?.schoolId ?? null;
 
     const [tokens] = await Promise.all([
@@ -92,15 +87,6 @@ export class AuthService {
     }
 
     // 6. Devolver los tokens y la información del usuario
-    const _tEnd = Date.now();
-    console.log(
-      `[AUTH-LOGIN]\n` +
-        `findUserMs=${_tBcrypt - _tFind}\n` +
-        `parallelMs=${_tPush - _tParallel}\n` +
-        `pushTokenMs=${_tTokens - _tPush}\n` +
-        `tokensMs=${_tEnd - _tTokens}\n` +
-        `totalMs=${_tEnd - _t0}`,
-    );
     return {
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
@@ -265,13 +251,11 @@ export class AuthService {
   // ── HELPERS PRIVADOS ───────────────────────────────────
 
   private async _loadRolesForLogin(userId: bigint) {
-    const _t0 = Date.now();
     // 1 query: user_roles (solo los IDs necesarios)
     const userRoles = await this.prisma.userRole.findMany({
       where: { userId },
       select: { roleId: true, schoolId: true },
     });
-    const _tRoles = Date.now();
 
     const roleIds = [...new Set(userRoles.map((r) => r.roleId))];
     const schoolIds = [
@@ -285,14 +269,6 @@ export class AuthService {
         ? this.prisma.school.findMany({ where: { id: { in: schoolIds } } })
         : Promise.resolve([]),
     ]);
-    const _tEnd = Date.now();
-
-    console.log(
-      `[AUTH-LOGIN-ROLES]\n` +
-        `userRolesMs=${_tRoles - _t0}\n` +
-        `rolesSchoolsMs=${_tEnd - _tRoles}\n` +
-        `totalMs=${_tEnd - _t0}`,
-    );
 
     const roleMap = new Map(roles.map((r) => [r.id, r.name]));
     const schoolMap = new Map(schools.map((s) => [s.id, s.name]));
@@ -308,8 +284,6 @@ export class AuthService {
   }
 
   private async _loadStudentsForLogin(userId: bigint) {
-    const _t0 = Date.now();
-
     // Fase 1: user_students (ordenados por isPrimary desc, igual que el include original)
     const userStudents = await this.prisma.userStudent.findMany({
       where: { userId },
@@ -343,9 +317,6 @@ export class AuthService {
           select: { id: true, name: true },
         })
       : [];
-
-    const _tEnd = Date.now();
-    console.log(`[AUTH-LOGIN-STUDENTS] totalMs=${_tEnd - _t0}`);
 
     // Reconstruir la estructura equivalente al include original:
     // userStudents[].student.{...campos, enrollments:[{classroom:{name}}]}

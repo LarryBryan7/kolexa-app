@@ -456,7 +456,6 @@ export class ClassroomService {
 
   // ── Sincroniza cursos y tareas desde Google Classroom ────
   async syncStudent(studentId: bigint): Promise<{ courses: number; courseworks: number }> {
-    const tCacheStart = Date.now();
     type CacheRow = {
       last_synced_at: Date | null;
       course_count: bigint;
@@ -472,14 +471,8 @@ export class ClassroomService {
     const lastSyncedAt = row?.last_synced_at ?? null;
     const cachedCourses = Number(row?.course_count ?? 0);
     const cachedCourseworks = Number(row?.coursework_count ?? 0);
-    const tCacheMs = Date.now() - tCacheStart;
     const diffMs = lastSyncedAt ? Date.now() - lastSyncedAt.getTime() : -1;
     const cacheHit = !!lastSyncedAt && diffMs < 15 * 60 * 1000;
-    console.log(
-      `[SYNC-DIAG] studentId=${studentId} lastCourse=${lastSyncedAt?.toISOString() ?? 'null'} ` +
-        `now=${new Date().toISOString()} diffMs=${diffMs} cacheHit=${cacheHit} ` +
-        `cacheQueriesMs=${tCacheMs} courses=${cachedCourses} courseworks=${cachedCourseworks}`,
-    );
     if (cacheHit) {
       return { courses: cachedCourses, courseworks: cachedCourseworks };
     }
@@ -870,7 +863,6 @@ export class ClassroomService {
       course_section: string | null;
     };
 
-    const _t0 = Date.now();
     const sessionRows = await this.prisma.$queryRaw<SessionRow[]>`
       SELECT s.id, s.teacher_id, s.created_at, s.photo_urls,
              (SELECT r.status FROM gc_attendance_records r WHERE r.session_id = s.id ORDER BY r.id LIMIT 1) AS status
@@ -880,12 +872,9 @@ export class ClassroomService {
       LIMIT 1
     `;
 
-    const _tSession = Date.now();
-    let _attendanceMs = 0;
-    let _scheduleMs = 0;
-    let _courseworkMs = 0;
+    // Las 3 queries restantes se mantienen en UNA transacción (1 conexión)
+    // para no cambiar el comportamiento con el pooler (connection_limit=1).
     const [blockRows, tokenRows, upcomingRows] = await this.prisma.$transaction(async (tx) => {
-      const _tA = Date.now();
       const blocks = await tx.$queryRaw<BlockRow[]>`
         SELECT b.start_time, b.end_time, b.type, c.name AS course_name
         FROM schedule_blocks b
@@ -894,13 +883,9 @@ export class ClassroomService {
           AND b.day_of_week = ${dayOfWeek}
         ORDER BY b.start_time ASC
       `;
-      _scheduleMs = Date.now() - _tA;
 
-      const _tB = Date.now();
       const tokens = await tx.$queryRaw<TokenRow[]>`SELECT id FROM google_tokens WHERE student_id = ${studentId} LIMIT 1`;
-      _attendanceMs = Date.now() - _tB;
 
-      const _tC = Date.now();
       const upcoming = await tx.$queryRaw<UpcomingRow[]>`
         SELECT cw.id, cw.course_id, cw.title, cw.description, cw.due_date, cw.max_points, cw.work_type,
                c.name AS course_name, c.section AS course_section
@@ -918,7 +903,6 @@ export class ClassroomService {
         ORDER BY cw.due_date ASC NULLS LAST
         LIMIT 20
       `;
-      _courseworkMs = Date.now() - _tC;
 
       return [blocks, tokens, upcoming] as [BlockRow[], TokenRow[], UpcomingRow[]];
     });
@@ -985,33 +969,13 @@ export class ClassroomService {
         }))
       : [];
 
-    const _tEnd = Date.now();
-    console.log(
-      `[PARENT-HOME] studentId=${studentId} sessionMs=${_tSession - _t0} ` +
-        `txMs=${_tEnd - _tSession} totalMs=${_tEnd - _t0}`,
-    );
-    console.log(
-      `[PARENT-HOME-DETAIL]\n` +
-        `attendanceQueryMs=${_attendanceMs}\n` +
-        `scheduleQueryMs=${_scheduleMs}\n` +
-        `courseworkQueryMs=${_courseworkMs}\n` +
-        `txMs=${_tEnd - _tSession}\n` +
-        `totalMs=${_tEnd - _t0}`,
-    );
     return { todaySummary, upcomingStatus: { connected, upcoming } };
   }
 
   async isConnected(studentId: bigint): Promise<boolean> {
-    const _t0 = Date.now();
     const token = await this.prisma.googleToken.findUnique({
       where: { studentId },
     });
-    const _tEnd = Date.now();
-    console.log(
-      `[IS-CONNECTED]\n` +
-        `queryMs=${_tEnd - _t0}\n` +
-        `totalMs=${_tEnd - _t0}`,
-    );
     return !!token;
   }
 
