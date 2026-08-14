@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/services/push_notifications_service.dart';
 import '../../../core/widgets/notification_banner.dart';
@@ -70,6 +71,8 @@ class _HomeV2PageState extends State<HomeV2Page> with WidgetsBindingObserver {
   bool _showManualVerify = false;
   Timer? _verifyTimeout;
   Future<bool>? _classroomStatusFuture;
+  bool? _classroomConnected;
+  final Map<String, bool> _knownConnected = {};
   ParentHomeData? _parentHome;
 
   // Marca de tiempo del montaje del Home para medir cuánto tarda en
@@ -81,6 +84,27 @@ class _HomeV2PageState extends State<HomeV2Page> with WidgetsBindingObserver {
     super.initState();
     _homeStartMs = DateTime.now().millisecondsSinceEpoch;
     WidgetsBinding.instance.addObserver(this);
+    SharedPreferences.getInstance().then((p) {
+      if (!mounted) return;
+      final authState = context.read<AuthBloc>().state;
+      if (authState is AuthAuthenticated) {
+        for (final c in _buildChildren(authState)) {
+          final v = p.getBool(_gcConnectedKey(c.studentId));
+          if (v != null) {
+            _knownConnected[c.studentId] = v;
+          }
+        }
+        // Sembramos el estado de conexión del hijo actual de forma síncrona.
+        final children = _buildChildren(authState);
+        if (children.isNotEmpty) {
+          final sid = children[_selectedChild.clamp(0, children.length - 1)].studentId;
+          final known = _knownConnected[sid];
+          if (known != null) {
+            setState(() => _classroomConnected = known);
+          }
+        }
+      }
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       _onRefresh();
       final authState = context.read<AuthBloc>().state;
@@ -114,11 +138,6 @@ class _HomeV2PageState extends State<HomeV2Page> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && _wentToClassroomBrowser) {
       setState(() => _wentToClassroomBrowser = false);
-      if (!_waitingClassroomConfirm) {
-        _onRefresh();
-      }
-    }
-    if (state == AppLifecycleState.resumed && _waitingClassroomConfirm) {
       _verifyClassroomConnection();
     }
   }
@@ -133,6 +152,14 @@ class _HomeV2PageState extends State<HomeV2Page> with WidgetsBindingObserver {
     final children = _buildChildren(authState);
     if (children.isNotEmpty) {
       final studentId = children[index.clamp(0, children.length - 1)].studentId;
+      setState(() => _classroomConnected = _knownConnected[studentId]);
+      _classroomStatusFuture =
+          ClassroomRepository(context.read<ApiClient>()).isConnected(studentId);
+      // Cuando isConnected resuelve, actualizamos y persistimos el estado.
+      _classroomStatusFuture!.then((connected) {
+        if (mounted) setState(() => _classroomConnected = connected);
+        _rememberConnected(studentId, connected);
+      });
       _loadParentHome(studentId);
     }
   }
@@ -142,6 +169,15 @@ class _HomeV2PageState extends State<HomeV2Page> with WidgetsBindingObserver {
     final children = _buildChildren(authState);
     if (children.isEmpty) return null;
     return children[_selectedChild.clamp(0, children.length - 1)].studentId;
+  }
+
+  String _gcConnectedKey(String studentId) => 'gc_connected_$studentId';
+
+  void _rememberConnected(String studentId, bool connected) {
+    _knownConnected[studentId] = connected;
+    SharedPreferences.getInstance().then((p) {
+      p.setBool(_gcConnectedKey(studentId), connected);
+    });
   }
 
   Future<void> _onRefresh({bool showErrors = false}) async {
@@ -157,6 +193,9 @@ class _HomeV2PageState extends State<HomeV2Page> with WidgetsBindingObserver {
       });
       _loadParentHome(studentId);
       final connected = await statusFuture;
+      if (mounted) setState(() => _classroomConnected = connected);
+      // Persistimos el estado de conexión para la próxima entrada.
+      _rememberConnected(studentId, connected);
       if (connected) {
         try {
           await repo.sync(studentId);
@@ -206,16 +245,7 @@ class _HomeV2PageState extends State<HomeV2Page> with WidgetsBindingObserver {
         return;
       }
       if (mounted) {
-        setState(() {
-          _waitingClassroomConfirm = true;
-          _showManualVerify = false;
-        });
-        _verifyTimeout?.cancel();
-        _verifyTimeout = Timer(const Duration(seconds: 8), () {
-          if (mounted && _waitingClassroomConfirm) {
-            setState(() => _showManualVerify = true);
-          }
-        });
+        _wentToClassroomBrowser = true;
       }
     } catch (e) {
       if (mounted) {
@@ -247,17 +277,37 @@ class _HomeV2PageState extends State<HomeV2Page> with WidgetsBindingObserver {
         _showManualVerify = false;
       });
     }
-    // Sincronizamos ANTES de mostrar la card "Esta semana" para que el
-    // conteo de pendientes ya incluya los datos recién traídos de Google.
+    bool connected = false;
+    try {
+      connected = await repo.isConnected(studentId);
+    } catch (_) {
+      connected = false;
+    }
+    if (!mounted) return;
+    if (!connected) {
+      setState(() {
+        _connectingClassroom = false;
+        _waitingClassroomConfirm = false;
+        _showManualVerify = false;
+        _classroomStatusFuture = Future.value(false);
+        _classroomConnected = false;
+      });
+      _rememberConnected(studentId, false);
+      return;
+    }
     try { await repo.sync(studentId); } catch (_) {}
+    if (!mounted) return;
+    await _loadParentHome(studentId);
     if (!mounted) return;
     setState(() {
       _connectingClassroom = false;
       _waitingClassroomConfirm = false;
       _showManualVerify = false;
       _classroomStatusFuture = Future.value(true);
-      _refreshKey++;
+      _classroomConnected = true;
     });
+    // Persistimos el estado de conexión para la próxima entrada.
+    _rememberConnected(studentId, true);
   }
 
   void _selectChild(int index) {
@@ -273,8 +323,14 @@ class _HomeV2PageState extends State<HomeV2Page> with WidgetsBindingObserver {
     final children = _buildChildren(authState);
     if (children.isNotEmpty) {
       final studentId = children[index.clamp(0, children.length - 1)].studentId;
+      setState(() => _classroomConnected = _knownConnected[studentId]);
       _classroomStatusFuture =
           ClassroomRepository(context.read<ApiClient>()).isConnected(studentId);
+      // Cuando isConnected resuelve, actualizamos y persistimos el estado.
+      _classroomStatusFuture!.then((connected) {
+        if (mounted) setState(() => _classroomConnected = connected);
+        _rememberConnected(studentId, connected);
+      });
       // Cargar los datos combinados del nuevo hijo.
       _loadParentHome(studentId);
     }
@@ -436,6 +492,8 @@ class _HomeV2PageState extends State<HomeV2Page> with WidgetsBindingObserver {
                                 child: children[safeIndex],
                                 refreshKey: _refreshKey,
                                 upcomingStatus: _parentHome?.upcomingStatus,
+                                connected: _classroomConnected,
+                                waitingConfirm: _waitingClassroomConfirm,
                               ),
                               const SizedBox(height: 12),
                             ],
@@ -1652,10 +1710,14 @@ class _EstaSemanRow extends StatefulWidget {
   /// upcomingStatus compartido desde el estado padre (cargado por
   /// /parent/home en la misma petición que "Novedades").
   final UpcomingStatus? upcomingStatus;
+  final bool? connected;
+  final bool waitingConfirm;
   const _EstaSemanRow({
     required this.child,
     required this.refreshKey,
     required this.upcomingStatus,
+    this.connected,
+    this.waitingConfirm = false,
   });
 
   @override
@@ -1721,13 +1783,15 @@ class _EstaSemanRowState extends State<_EstaSemanRow> {
 
   String get _subtitle {
     if (_count == null) return 'Cargando tus tareas...';
-    if (_count == 0) return 'Todo al día esta semana';
-    return '$_count pendiente${_count != 1 ? 's' : ''} esta semana';
+    if (_count == 0) return 'Sin pendientes';
+    return '$_count tarea${_count != 1 ? 's' : ''}';
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_connected != true) return const SizedBox.shrink();
+    final showCard = !widget.waitingConfirm &&
+        (_connected == true || (widget.connected == true && _connected == null));
+    if (!showCard) return const SizedBox.shrink();
     return GestureDetector(
       onTap: () => Navigator.push(
         context,
