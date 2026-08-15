@@ -278,11 +278,10 @@ export class ClassroomService {
       });
     }
 
-    // 1d. Actualizar cursos existentes (1 transacción: 1 BEGIN + N UPDATE + 1 COMMIT,
-    //     en lugar de N updates con transacción implícita cada uno)
-    if (existingCoursesData.length > 0) {
-      await this.prisma.$transaction(
-        existingCoursesData.map((c) =>
+    for (let i = 0; i < existingCoursesData.length; i += BATCH) {
+      const batch = existingCoursesData.slice(i, i + BATCH);
+      await Promise.all(
+        batch.map((c) =>
           this.prisma.gcTeacherCourse.update({
             where: { teacherId_googleId: { teacherId: userId, googleId: c.googleId } },
             data: {
