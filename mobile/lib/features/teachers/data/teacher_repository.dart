@@ -85,6 +85,7 @@ class TeacherHomeData {
   // 'none' | 'attendance_only' | 'complete'
   final String attendanceState;
   final AttendanceSummary? attendanceSummary;
+  final bool connected;
 
   const TeacherHomeData({
     required this.classrooms,
@@ -93,6 +94,7 @@ class TeacherHomeData {
     this.gcStudentCount,
     this.attendanceState = 'none',
     this.attendanceSummary,
+    this.connected = false,
   });
 
   factory TeacherHomeData.fromJson(Map<String, dynamic> json) {
@@ -107,6 +109,7 @@ class TeacherHomeData {
       gcStudentCount: json['gcStudentCount'] as int?,
       attendanceState: json['attendanceState'] as String? ?? 'none',
       attendanceSummary: rawSummary != null ? AttendanceSummary.fromJson(rawSummary) : null,
+      connected: json['connected'] as bool? ?? false,
     );
   }
 }
@@ -176,6 +179,11 @@ class ClassroomStudent {
       );
 }
 
+class SyncResult {
+  final bool cacheHit;
+  const SyncResult({required this.cacheHit});
+}
+
 class TeacherRepository {
   final ApiClient _api;
   const TeacherRepository(this._api);
@@ -195,8 +203,10 @@ class TeacherRepository {
     return (response.data as Map<String, dynamic>)['url'] as String;
   }
 
-  Future<void> syncClassroom() async {
-    await _api.post('/classroom/teacher/sync');
+  Future<SyncResult> syncClassroom() async {
+    final response = await _api.post('/classroom/teacher/sync');
+    final data = response.data as Map<String, dynamic>? ?? {};
+    return SyncResult(cacheHit: data['cacheHit'] as bool? ?? false);
   }
 
   Future<List<GcTeacherCourse>> getCourses() async {
@@ -210,8 +220,11 @@ class TeacherRepository {
     return (response.data as Map<String, dynamic>)['count'] as int? ?? 0;
   }
 
-  Future<List<ClassroomStudent>> getClassroomRoster() async {
-    final response = await _api.get('/classroom/teacher/roster');
+  Future<List<ClassroomStudent>> getClassroomRoster({int? courseId}) async {
+    final response = await _api.get(
+      '/classroom/teacher/roster',
+      queryParams: courseId != null ? {'courseId': courseId} : null,
+    );
     final raw = response.data as List<dynamic>? ?? [];
     return raw
         .map((e) => ClassroomStudent.fromJson(e as Map<String, dynamic>))
