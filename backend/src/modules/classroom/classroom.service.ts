@@ -275,17 +275,15 @@ export class ClassroomService {
     const t6 = Date.now();
     console.log(`[TEACHER-SYNC] courses-db = ${t6 - t5} ms`);
 
-    // 2. Roster de alumnos: createMany (nuevos) + updateMany (syncedAt / studentId)
-    //    por curso. El studentId se resuelve con el Map precargado (sin N+1).
     console.log('[TEACHER-ROSTER] start');
     const r0 = Date.now();
     let rTotalStudents = 0;
-    for (const { course, fetchedStudents } of perCourse) {
+
+    const processCourse = async (course: any, fetchedStudents: any[]) => {
       const rCourseStart = Date.now();
-      rTotalStudents += fetchedStudents.length;
       console.log(`[TEACHER-ROSTER] course=${course.id} students=${fetchedStudents.length}`);
       const courseId = courseIdByGoogle.get(course.id!);
-      if (!courseId) continue;
+      if (!courseId) return 0;
 
       const newStudents: {
         courseId: bigint;
@@ -357,6 +355,16 @@ export class ClassroomService {
       } else {
         console.log('[TEACHER-ROSTER] pending=0 ms count=0');
       }
+
+      return fetchedStudents.length;
+    };
+
+    for (let i = 0; i < perCourse.length; i += BATCH) {
+      const batch = perCourse.slice(i, i + BATCH);
+      const counts = await Promise.all(
+        batch.map(({ course, fetchedStudents }) => processCourse(course, fetchedStudents)),
+      );
+      for (const c of counts) rTotalStudents += c;
     }
     const t7 = Date.now();
     console.log(`[TEACHER-SYNC] roster-db = ${t7 - t6} ms`);
