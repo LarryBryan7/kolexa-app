@@ -365,24 +365,22 @@ export class ClassroomService {
           rTotalStudents += fetchedStudents.length;
         }
 
-        // 2a. Insertar alumnos nuevos (1 query global; skipDuplicates respeta @@unique([courseId, googleId]))
         if (allNewStudents.length > 0) {
-          await this.prisma.gcCourseStudent.createMany({
-            data: allNewStudents,
-            skipDuplicates: true,
-          });
-        }
-        const r1 = Date.now();
-        console.log(`[TEACHER-ROSTER] createMany=${r1 - r0} ms`);
-
-        if (allGoogleIds.length > 0 && allCourseIds.length > 0) {
-          await this.prisma.gcCourseStudent.updateMany({
-            where: { courseId: { in: allCourseIds }, googleId: { in: allGoogleIds } },
-            data: { syncedAt: new Date() },
-          });
+          const valueRows = allNewStudents.map((s) =>
+            Prisma.sql`(${s.courseId}::bigint, ${s.googleId}::text, ${s.fullName}::text, ${s.email}::text, ${s.photoUrl}::text, ${s.studentId}::bigint)`,
+          );
+          await this.prisma.$executeRaw`
+            INSERT INTO "gc_course_students" (course_id, google_id, full_name, email, photo_url, synced_at, student_id)
+            VALUES ${Prisma.join(valueRows)}
+            ON CONFLICT (course_id, google_id) DO UPDATE
+            SET full_name = EXCLUDED.full_name,
+                email = EXCLUDED.email,
+                photo_url = EXCLUDED.photo_url,
+                synced_at = NOW()
+          `;
         }
         const r2 = Date.now();
-        console.log(`[TEACHER-ROSTER] syncedAt=${r2 - r1} ms`);
+        console.log(`[TEACHER-ROSTER] upsert=${r2 - r0} ms`);
 
         if (googleIdToStudentIdByCourse.size > 0) {
           const pending = await this.prisma.gcCourseStudent.findMany({
