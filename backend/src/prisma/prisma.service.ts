@@ -19,6 +19,11 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
         { emit: 'stdout', level: 'error' },
       ],
     });
+
+    // ── Instrumentación temporal de latencia Prisma/PostgreSQL ──
+    (this as any).$on('query', (e: any) => {
+      console.log(`[PRISMA-QUERY] ${e.duration} ms | ${e.query.slice(0, 120)}`);
+    });
   }
 
   async onModuleInit() {
@@ -26,6 +31,17 @@ export class PrismaService extends PrismaClient implements OnModuleInit {
       // $connect() establece la conexión con PostgreSQL
       await this.$connect();
       this.logger.log('✅ Conectado a PostgreSQL via Prisma');
+
+      // ── Prueba temporal de latencia Prisma/PostgreSQL ──
+      const PING_COUNT = 10;
+      console.log(`[PRISMA-PING] start count=${PING_COUNT}`);
+      for (let i = 1; i <= PING_COUNT; i++) {
+        const pingStart = Date.now();
+        await this.$queryRawUnsafe('SELECT 1');
+        const pingEnd = Date.now();
+        console.log(`[PRISMA-PING] #${i} total=${pingEnd - pingStart} ms`);
+      }
+      console.log('[PRISMA-PING] end');
     } catch (error) {
       this.logger.error('❌ Error al conectar a PostgreSQL', error);
       // Si no se puede conectar, el servidor no debería arrancar
