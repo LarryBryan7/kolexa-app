@@ -290,8 +290,9 @@ export class ClassroomService {
         studentId: bigint | null;
       }[] = [];
       const existingGoogleIds: string[] = [];
-      // Alumnos con match que podrían no tener studentId aún (caso marginal)
-      const matchedGoogleIds: string[] = [];
+      // Map googleId -> studentId construido UNA vez por curso (evita
+      // fetchedStudents.find() repetido dentro del loop de updates marginales).
+      const googleIdToStudentId = new Map<string, bigint>();
 
       for (const s of fetchedStudents) {
         const fullName: string = s.profile?.name?.fullName ?? '–';
@@ -306,7 +307,7 @@ export class ClassroomService {
           studentId: matchedId,
         });
         existingGoogleIds.push(s.userId);
-        if (matchedId) matchedGoogleIds.push(s.userId);
+        if (matchedId) googleIdToStudentId.set(s.userId, matchedId);
       }
 
       // Insertar alumnos nuevos (skipDuplicates respeta @@unique([courseId, googleId]))
@@ -325,17 +326,16 @@ export class ClassroomService {
         });
       }
 
-      // Asignar studentId a alumnos existentes que aún no lo tienen y ahora tienen
-      // match (preserva la semántica del upsert condicional original). Caso marginal.
-      if (matchedGoogleIds.length > 0) {
-        for (const googleId of matchedGoogleIds) {
-          const matchedId = studentsByNormalizedName.get(
-            (fetchedStudents.find((s) => s.userId === googleId)?.profile?.name?.fullName ?? '')
-              .toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim(),
-          );
+      if (googleIdToStudentId.size > 0) {
+        const pending = await this.prisma.gcCourseStudent.findMany({
+          where: { courseId, googleId: { in: [...googleIdToStudentId.keys()] }, studentId: null },
+          select: { googleId: true },
+        });
+        for (const p of pending) {
+          const matchedId = googleIdToStudentId.get(p.googleId);
           if (matchedId) {
             await this.prisma.gcCourseStudent.updateMany({
-              where: { courseId, googleId, studentId: null },
+              where: { courseId, googleId: p.googleId, studentId: null },
               data: { studentId: matchedId },
             });
           }
