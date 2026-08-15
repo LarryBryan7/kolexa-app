@@ -207,21 +207,27 @@ export class ClassroomService {
     // ── Optimización: lanzar TODAS las peticiones a Google en paralelo ──
     const perCourse = await Promise.all(
       courses.map(async (course: any) => {
-        // 1. Roster de alumnos del curso (en paralelo con las tareas)
-        let fetchedStudents: any[] = [];
-        try {
-          const { data: studentsData } = await classroomApi.courses.students.list({
-            courseId: course.id!,
-          });
-          fetchedStudents = studentsData.students ?? [];
-        } catch (_) {}
-
-        // 2. Tareas publicadas del curso
-        const { data: cwData } = await classroomApi.courses.courseWork.list({
-          courseId: course.id!,
-          courseWorkStates: ['PUBLISHED'],
-        });
-        const courseworks = cwData.courseWork ?? [];
+        const [studentsResult, cwResult] = await Promise.all([
+          (async () => {
+            let fetchedStudents: any[] = [];
+            try {
+              const { data: studentsData } = await classroomApi.courses.students.list({
+                courseId: course.id!,
+              });
+              fetchedStudents = studentsData.students ?? [];
+            } catch (_) {}
+            return fetchedStudents;
+          })(),
+          (async () => {
+            const { data: cwData } = await classroomApi.courses.courseWork.list({
+              courseId: course.id!,
+              courseWorkStates: ['PUBLISHED'],
+            });
+            return cwData.courseWork ?? [];
+          })(),
+        ]);
+        const fetchedStudents = studentsResult;
+        const courseworks = cwResult;
 
         // 3. Entregas (submissions) de TODAS las tareas en paralelo
         const submissionsByCw = await Promise.all(
