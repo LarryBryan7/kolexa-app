@@ -153,17 +153,18 @@ export class ClassroomService {
     const t1 = Date.now();
     console.log(`[TEACHER-SYNC] cache-check = ${t1 - t0} ms`);
 
-    const auth = await this.getAuthClientForTeacher(userId);
+    // ── Optimización: auth + userRole en paralelo (independientes) ──
+    const [auth, teacherRole] = await Promise.all([
+      this.getAuthClientForTeacher(userId),
+      this.prisma.userRole.findFirst({
+        where: { userId },
+        select: { schoolId: true },
+      }),
+    ]);
     const t2 = Date.now();
-    console.log(`[TEACHER-SYNC] auth = ${t2 - t1} ms`);
+    console.log(`[TEACHER-SYNC] auth+userRole = ${t2 - t1} ms`);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const classroomApi = google.classroom({ version: 'v1', auth } as any) as any;
-
-    // Obtener schoolId del docente para el auto-match de alumnos
-    const teacherRole = await this.prisma.userRole.findFirst({
-      where: { userId },
-      select: { schoolId: true },
-    });
     const schoolId = teacherRole?.schoolId ?? null;
 
     // ── Optimización (N+1): precargar UNA sola vez los estudiantes del colegio ──
@@ -173,6 +174,8 @@ export class ClassroomService {
         where: { schoolId, isActive: true, deletedAt: null },
         select: { id: true, firstName: true, lastName: true },
       });
+      const t2b = Date.now();
+      console.log(`[TEACHER-SYNC] student.findMany = ${t2b - t2} ms`);
       const normalize = (s: string) =>
         s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
       const nameCount = new Map<string, number>();
@@ -185,6 +188,10 @@ export class ClassroomService {
       for (const [name, count] of nameCount) {
         if (count === 1) studentsByNormalizedName.set(name, nameToId.get(name)!);
       }
+      const t2c = Date.now();
+      console.log(`[TEACHER-SYNC] matching = ${t2c - t2b} ms`);
+    } else {
+      console.log('[TEACHER-SYNC] student.findMany = 0 ms (sin schoolId)');
     }
     const t3 = Date.now();
     console.log(`[TEACHER-SYNC] student-matching = ${t3 - t2} ms`);
