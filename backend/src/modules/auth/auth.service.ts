@@ -158,24 +158,42 @@ export class AuthService {
     const existing = await this.prisma.user.findFirst({
       where: { email: inv.email, deletedAt: null },
     });
-    if (existing) throw new ConflictException('Este email ya tiene una cuenta registrada');
+
+    if (existing && existing.passwordHash) {
+      throw new ConflictException('Este email ya tiene una cuenta registrada');
+    }
 
     const passwordHash = await bcrypt.hash(dto.password, 10);
 
     const newUser = await this.prisma.$transaction(async (tx) => {
-      const user = await tx.user.create({
-        data: {
-          email: inv.email,
-          passwordHash,
-          firstName: dto.firstName,
-          lastName: dto.lastName,
-          isActive: true,
-        },
-      });
+      let user;
+      if (existing) {
+        user = await tx.user.update({
+          where: { id: existing.id },
+          data: {
+            passwordHash,
+            firstName: dto.firstName,
+            lastName: dto.lastName,
+            needsPasswordChange: false,
+            isActive: true,
+          },
+        });
+      } else {
+        // Cuenta nueva: se crea el usuario y su rol.
+        user = await tx.user.create({
+          data: {
+            email: inv.email,
+            passwordHash,
+            firstName: dto.firstName,
+            lastName: dto.lastName,
+            isActive: true,
+          },
+        });
 
-      await tx.userRole.create({
-        data: { userId: user.id, roleId: inv.roleId, schoolId: inv.schoolId },
-      });
+        await tx.userRole.create({
+          data: { userId: user.id, roleId: inv.roleId, schoolId: inv.schoolId },
+        });
+      }
 
       await tx.schoolInvitation.update({
         where: { id: inv.id },

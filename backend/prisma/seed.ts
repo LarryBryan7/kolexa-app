@@ -12,6 +12,96 @@ async function hashPass() {
   return bcrypt.hash(PASS, 10);
 }
 
+// ── SINCRONIZACIÓN DE SECUENCIAS AUTOINCREMENTALES ─────────────
+const AUTOINCREMENT_TABLES = [
+  'countries',
+  'regions',
+  'provinces',
+  'districts',
+  'schools',
+  'school_locations',
+  'classrooms',
+  'roles',
+  'users',
+  'user_tokens',
+  'user_roles',
+  'students',
+  'student_enrollments',
+  'user_students',
+  'user_classrooms',
+  'courses',
+  'classroom_courses',
+  'schedule_blocks',
+  'subscription_plans',
+  'plan_modules',
+  'school_subscriptions',
+  'school_module_overrides',
+  'attachments',
+  'attendances',
+  'attendance_records',
+  'homeworks',
+  'student_homeworks',
+  'anecdotes',
+  'announcements',
+  'appointment_slots',
+  'appointments',
+  'messages',
+  'message_recipients',
+  'authorized_pickups',
+  'pickup_events',
+  'grade_periods',
+  'grades',
+  'payment_concepts',
+  'payment_obligations',
+  'payments',
+  'conversations',
+  'chat_messages',
+  'suggestions',
+  'suggestion_responses',
+  'discount_campaigns',
+  'discount_coupons',
+  'coupon_redemptions',
+  'notifications',
+  'notification_deliveries',
+  'push_tokens',
+  'school_invitations',
+  'google_tokens',
+  'teacher_google_tokens',
+  'gc_teacher_courses',
+  'gc_course_students',
+  'gc_attendance_sessions',
+  'gc_attendance_records',
+  'gc_teacher_submissions',
+  'gc_courses',
+  'gc_coursework',
+  'gc_student_submissions',
+];
+
+async function syncSequences() {
+  console.log('🔢 Sincronizando secuencias autoincrementales...');
+  let synced = 0;
+  for (const table of AUTOINCREMENT_TABLES) {
+    const seqName = `${table}_id_seq`;
+    try {
+      // Obtener el MAX(id) actual de la tabla
+      const rows: Array<{ max: bigint | number | null }> =
+        await prisma.$queryRawUnsafe(
+          `SELECT COALESCE(MAX(id), 0) AS max FROM "${table}"`,
+        );
+      const maxId = rows[0]?.max ?? 0;
+      const nextVal = Number(maxId) + 1;
+      // Re-sincronizar la secuencia para que el siguiente valor sea max+1
+      await prisma.$executeRawUnsafe(
+        `SELECT setval('"${seqName}"', ${nextVal}, false)`,
+      );
+      synced += 1;
+    } catch (err) {
+      console.warn(`  ⚠️ No se pudo sincronizar "${table}": ${(err as Error).message}`);
+    }
+  }
+  console.log(`  ✓ ${synced} secuencias sincronizadas con sus IDs máximos\n`);
+}
+
 async function main() {
   console.log('🌱 Iniciando seed de Kolexa...\n');
 
@@ -933,6 +1023,9 @@ async function main() {
     data: { conversationId: chatConv2.id, senderId: profCarlos.id, body: 'Sra. Rosa, le recuerdo que el próximo lunes hay evaluación de Historia del Perú.' },
   });
   console.log('  ✓ 2 conversaciones de chat (Rosa ↔ Prof. María y Prof. Carlos)\n');
+
+  // ── SINCRONIZAR SECUENCIAS AUTOINCREMENTALES ──────────────────
+  await syncSequences();
 
   // ── RESUMEN ────────────────────────────────────────────────────
   console.log('═════════════════════════════════════════════════════');
