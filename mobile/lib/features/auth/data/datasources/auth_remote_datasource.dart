@@ -36,6 +36,22 @@ class AuthRemoteDataSource {
     return LoginResponse.fromJson(response.data as Map<String, dynamic>);
   }
 
+  // ── loginWithGoogle ───────────────────────────────────────
+  Future<LoginResponse> loginWithGoogle({
+    required String idToken,
+    String? firebaseToken,
+  }) async {
+    final body = {
+      'idToken': idToken,
+      if (firebaseToken != null) 'firebaseToken': firebaseToken,
+    };
+
+    // POST /auth/google → devuelve {user, accessToken, refreshToken}
+    final response = await _client.post('auth/google', data: body);
+
+    return LoginResponse.fromJson(response.data as Map<String, dynamic>);
+  }
+
   // ── logout ────────────────────────────────────────────────
   Future<void> logout() async {
     // POST /auth/logout (este endpoint requiere JWT — no es @Public)

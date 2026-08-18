@@ -12,6 +12,7 @@ import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { RegisterWithTokenDto } from './dto/register.dto';
+import { GoogleLoginDto } from './dto/google-login.dto';
 import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser, UserPayload } from '../../common/decorators/current-user.decorator';
 
@@ -48,6 +49,14 @@ export class AuthController {
   @HttpCode(HttpStatus.CREATED)
   register(@Body() dto: RegisterWithTokenDto) {
     return this.authService.registerWithToken(dto);
+  }
+
+  // ── POST /api/v1/auth/google ───────────────────────────
+  @Public()
+  @Post('google')
+  @HttpCode(HttpStatus.OK)
+  googleLogin(@Body() dto: GoogleLoginDto) {
+    return this.authService.loginWithGoogle(dto);
   }
 
   // ── POST /api/v1/auth/logout ───────────────────────────

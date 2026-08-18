@@ -25,6 +25,20 @@ final class LoginEvent extends AuthEvent {
   String toString() => 'LoginEvent(email: $email)'; // No logueamos la contraseña
 }
 
+// ── GoogleLoginEvent ──────────────────────────────────────
+final class GoogleLoginEvent extends AuthEvent {
+  final String idToken;
+  final String? firebaseToken; // para registrar el dispositivo en FCM
+
+  const GoogleLoginEvent({
+    required this.idToken,
+    this.firebaseToken,
+  });
+
+  @override
+  String toString() => 'GoogleLoginEvent(idToken: ${idToken.length} chars)';
+}
+
 // ── LogoutEvent ───────────────────────────────────────────
 // Se dispara cuando el usuario presiona "Cerrar Sesión".
 // No lleva datos — solo la intención de cerrar sesión.
