@@ -18,6 +18,9 @@ import { CreateStudentDto } from './dto/create-student.dto';
 import { UpdateStudentDto } from './dto/update-student.dto';
 import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
 import { CreateParentLinkDto } from './dto/create-parent-link.dto';
+import { CreateParentDto } from './dto/create-parent.dto';
+import { UpdateParentDto } from './dto/update-parent.dto';
+import { CreateParentStudentLinkDto } from './dto/create-parent-student-link.dto';
 import { CreateAssignmentDto } from './dto/create-assignment.dto';
 
 @Injectable()
@@ -320,7 +323,7 @@ export class AdminService {
           where: { isActive: true },
           include: { classroom: { select: { grade: true, section: true, academicYear: true } } },
         },
-        _count: { select: { parents: true } },
+        _count: { select: { parentLinks: true } },
       },
       orderBy: { firstName: 'asc' },
     });
@@ -465,6 +468,157 @@ export class AdminService {
     });
     if (!link) throw new NotFoundException('Vínculo no encontrado');
     return this.prisma.userStudent.delete({ where: { id } });
+  }
+
+  // PADRES / APODERADOS (información institucional)
+  private static readonly LINK_STATUSES = ['pending', 'linked', 'unlinked'] as const;
+
+  private assertLinkStatusConsistency(userId: bigint | null, linkStatus: string) {
+    if (!AdminService.LINK_STATUSES.includes(linkStatus as any)) {
+      throw new BadRequestException(
+        `linkStatus inválido. Valores permitidos: ${AdminService.LINK_STATUSES.join(', ')}`,
+      );
+    }
+    if (userId === null && linkStatus === 'linked') {
+      throw new BadRequestException(
+        'Un Parent sin cuenta vinculada (userId = null) no puede tener linkStatus = linked',
+      );
+    }
+    if (userId !== null && linkStatus !== 'linked') {
+      throw new BadRequestException(
+        'Un Parent con cuenta vinculada (userId != null) debe tener linkStatus = linked',
+      );
+    }
+    if (linkStatus === 'unlinked' && userId !== null) {
+      throw new BadRequestException(
+        'Un Parent con linkStatus = unlinked debe tener userId = null',
+      );
+    }
+  }
+
+  async listParents(schoolId: bigint, search?: string) {
+    const term = search?.trim();
+    return this.prisma.parent.findMany({
+      where: {
+        schoolId,
+        ...(term
+          ? {
+              OR: [
+                { firstName: { contains: term, mode: 'insensitive' } },
+                { lastName: { contains: term, mode: 'insensitive' } },
+                { dni: { contains: term, mode: 'insensitive' } },
+                { email: { contains: term, mode: 'insensitive' } },
+              ],
+            }
+          : {}),
+      },
+      include: {
+        user: { select: { id: true, email: true, isActive: true } },
+        students: {
+          include: {
+            student: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                code: true,
+                dni: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { firstName: 'asc' },
+    });
+  }
+
+  async createParent(schoolId: bigint, dto: CreateParentDto) {
+    // Se exige al menos un identificador fuerte (dni o email) para poder
+    // vincular la cuenta del padre desde la app móvil más adelante.
+    if (!dto.dni && !dto.email) {
+      throw new BadRequestException(
+        'Se requiere al menos un identificador (DNI o email) para el padre',
+      );
+    }
+    return this.prisma.parent.create({
+      data: {
+        schoolId,
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+        dni: dto.dni,
+        phone: dto.phone,
+        email: dto.email,
+        // linkStatus queda 'pending' hasta que el padre vincule su cuenta desde la app.
+      },
+    });
+  }
+
+  private async getParentOwned(schoolId: bigint, id: bigint) {
+    const parent = await this.prisma.parent.findFirst({
+      where: { id, schoolId },
+    });
+    if (!parent) throw new NotFoundException('Padre no encontrado');
+    return parent;
+  }
+
+  async updateParent(schoolId: bigint, id: bigint, dto: UpdateParentDto) {
+    const parent = await this.getParentOwned(schoolId, id);
+    this.assertLinkStatusConsistency(parent.userId, parent.linkStatus);
+    return this.prisma.parent.update({
+      where: { id },
+      data: {
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+        dni: dto.dni,
+        phone: dto.phone,
+        email: dto.email,
+        isActive: dto.isActive,
+      },
+    });
+  }
+
+  async createParentStudentLink(schoolId: bigint, dto: CreateParentStudentLinkDto) {
+    // Verificar que el padre pertenezca al colegio
+    await this.getParentOwned(schoolId, BigInt(dto.parentId));
+    // Verificar que el alumno pertenezca al colegio
+    await this.getStudentOwned(schoolId, BigInt(dto.studentId));
+
+    // Evitar vínculo duplicado (constraint @@unique([parentId, studentId]))
+    const dup = await this.prisma.parentStudent.findFirst({
+      where: {
+        parentId: BigInt(dto.parentId),
+        studentId: BigInt(dto.studentId),
+      },
+      select: { id: true },
+    });
+    if (dup) {
+      throw new ConflictException('El padre ya está vinculado a este alumno');
+    }
+
+    return this.prisma.parentStudent.create({
+      data: {
+        parentId: BigInt(dto.parentId),
+        studentId: BigInt(dto.studentId),
+        relationship: dto.relationship,
+        isPrimary: dto.isPrimary ?? false,
+      },
+    });
+  }
+
+  async deleteParentStudentLink(schoolId: bigint, id: bigint) {
+    // Verificar que el vínculo pertenezca al colegio (vía parent o student)
+    const link = await this.prisma.parentStudent.findFirst({
+      where: {
+        id,
+        OR: [
+          { parent: { schoolId } },
+          { student: { schoolId } },
+        ],
+      },
+      select: { id: true },
+    });
+    if (!link) throw new NotFoundException('Vínculo no encontrado');
+    return this.prisma.parentStudent.delete({ where: { id } });
   }
 
   // ASIGNACIÓN DOCENTE–CURSO–AULA

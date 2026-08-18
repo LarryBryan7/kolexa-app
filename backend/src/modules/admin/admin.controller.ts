@@ -27,6 +27,9 @@ import { CreateStudentDto } from './dto/create-student.dto';
 import { UpdateStudentDto } from './dto/update-student.dto';
 import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
 import { CreateParentLinkDto } from './dto/create-parent-link.dto';
+import { CreateParentDto } from './dto/create-parent.dto';
+import { UpdateParentDto } from './dto/update-parent.dto';
+import { CreateParentStudentLinkDto } from './dto/create-parent-student-link.dto';
 import { CreateAssignmentDto } from './dto/create-assignment.dto';
 
 @Roles('school_admin')
@@ -173,6 +176,44 @@ export class AdminController {
     @Param('id', ParseIntPipe) id: number,
   ) {
     return this.service.deleteParentLink(user.schoolId!, BigInt(id));
+  }
+
+  // ── Padres / Apoderados (información institucional) ──────
+  @Get('parents')
+  listParents(@CurrentUser() user: UserPayload, @Query('search') search?: string) {
+    return this.service.listParents(user.schoolId!, search);
+  }
+
+  @Post('parents')
+  @HttpCode(HttpStatus.CREATED)
+  createParent(@CurrentUser() user: UserPayload, @Body() dto: CreateParentDto) {
+    return this.service.createParent(user.schoolId!, dto);
+  }
+
+  @Patch('parents/:id')
+  updateParent(
+    @CurrentUser() user: UserPayload,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateParentDto,
+  ) {
+    return this.service.updateParent(user.schoolId!, BigInt(id), dto);
+  }
+
+  @Post('parent-student-links')
+  @HttpCode(HttpStatus.CREATED)
+  createParentStudentLink(
+    @CurrentUser() user: UserPayload,
+    @Body() dto: CreateParentStudentLinkDto,
+  ) {
+    return this.service.createParentStudentLink(user.schoolId!, dto);
+  }
+
+  @Delete('parent-student-links/:id')
+  deleteParentStudentLink(
+    @CurrentUser() user: UserPayload,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.service.deleteParentStudentLink(user.schoolId!, BigInt(id));
   }
 
   // ── Asignación docente–curso–aula ────────────────────────
