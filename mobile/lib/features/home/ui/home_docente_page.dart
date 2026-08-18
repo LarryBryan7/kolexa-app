@@ -91,7 +91,7 @@ class _HomeDocentePageState extends State<HomeDocentePage>
       setState(() {
         _homeDataFuture = repo.getHomeData();
         _classroomStatusFuture = _homeDataFuture.then((d) => d.connected);
-        if (!cacheHit) {
+        if (home.connected && !cacheHit) {
           _coursesFuture = repo.getCourses();
           _pendingFuture = repo.getPendingCount();
           _scheduleFuture = repo.getTodaySchedule();
@@ -163,7 +163,9 @@ class _HomeDocentePageState extends State<HomeDocentePage>
       setState(() {
         _homeDataFuture = repo.getHomeData();
         _classroomStatusFuture = _homeDataFuture.then((d) => d.connected);
-        if (!cacheHit) {
+        // Solo re-lanzar courses/pending/schedule si el docente está conectado
+        // Y no hubo cache hit (evita duplicados cuando no está conectado).
+        if (home.connected && !cacheHit) {
           _coursesFuture = repo.getCourses();
           _pendingFuture = repo.getPendingCount();
           _scheduleFuture = repo.getTodaySchedule();
@@ -211,10 +213,14 @@ class _HomeDocentePageState extends State<HomeDocentePage>
         cacheHit = result.cacheHit;
       } catch (_) {}
       if (!mounted) return;
+      final home = await repo.getHomeData();
+      if (!mounted) return;
       setState(() {
-        _homeDataFuture = repo.getHomeData();
-        _classroomStatusFuture = _homeDataFuture.then((d) => d.connected);
-        if (!cacheHit) {
+        _homeDataFuture = Future.value(home);
+        _classroomStatusFuture = Future.value(home.connected);
+        // Solo re-lanzar courses/pending si el docente está conectado Y no hubo
+        // cache hit (evita duplicados cuando no está conectado).
+        if (home.connected && !cacheHit) {
           _coursesFuture = repo.getCourses();
           _pendingFuture = repo.getPendingCount();
         }
