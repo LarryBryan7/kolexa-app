@@ -9,6 +9,7 @@ import '../../../core/router/app_router.dart';
 import '../../../core/widgets/kolexa_logo.dart';
 import '../../../core/services/push_notifications_service.dart';
 import '../../../core/services/google_sign_in_service.dart';
+import '../../../core/services/onboarding_service.dart';
 
 // ── Paleta del frame "04 — Login v2 (paleta ajustada)" ───
 const _kBg       = Color(0xFFF7F6F3);
@@ -181,7 +182,9 @@ class _LoginPageState extends State<LoginPage> {
                     const SizedBox(height: 5),
                     Text(
                       _isParent
-                          ? 'Brindanos el código que te generó tu colegio y continúa con Google'
+                          ? (OnboardingService.instance.hasLinkedGoogleParentBefore
+                              ? 'Continúa con tu cuenta de Google'
+                              : 'Brindanos el código que te generó tu colegio y continúa con Google')
                           : 'Ingresa tus datos para continuar',
                       textAlign: TextAlign.center,
                       style: const TextStyle(fontSize: 15, color: _kTextGray),
@@ -326,7 +329,8 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                     ], // fin if (!_isParent)
 
-                    // ── Código de invitación (obligatorio para Google) ──
+                    // ── Código de invitación (solo la primera vez) ──
+                    if (!OnboardingService.instance.hasLinkedGoogleParentBefore) ...[
                     const SizedBox(height: 18),
                     SizedBox(
                       height: 52,
@@ -341,6 +345,7 @@ class _LoginPageState extends State<LoginPage> {
                         ),
                       ),
                     ),
+                    ],
 
                     // ── Continuar con Google ──────────────────
                     const SizedBox(height: 12),

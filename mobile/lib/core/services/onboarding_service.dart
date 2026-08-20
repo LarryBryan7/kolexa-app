@@ -12,6 +12,8 @@ class OnboardingService {
 
   static const String _keySelectedRole = 'onboarding_selected_role_v1';
 
+  static const String _keyGoogleParentLinked = 'google_parent_linked_once_v1';
+
   // Instancia cacheada de SharedPreferences. Se inicializa en main()
   // ANTES de runApp para que `isCompleted` sea síncrono.
   SharedPreferences? _prefs;
@@ -44,5 +46,12 @@ class OnboardingService {
   // Útil para testing / debug: permite reiniciar el onboarding.
   Future<void> reset() async {
     await _prefs?.remove(_keyOnboardingCompleted);
+  }
+
+  bool get hasLinkedGoogleParentBefore =>
+      _prefs?.getBool(_keyGoogleParentLinked) ?? false;
+
+  Future<void> markGoogleParentLinked() async {
+    await _prefs?.setBool(_keyGoogleParentLinked, true);
   }
 }

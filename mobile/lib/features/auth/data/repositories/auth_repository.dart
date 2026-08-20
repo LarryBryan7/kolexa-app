@@ -5,6 +5,7 @@ import '../models/user_model.dart';
 import '../../../../core/api/token_store.dart';
 import '../../../../core/api/interceptors/auth_interceptor.dart';
 import '../../../../core/services/google_sign_in_service.dart';
+import '../../../../core/services/onboarding_service.dart';
 
 class AuthRepository {
   final AuthRemoteDataSource _remoteDataSource;
@@ -46,6 +47,9 @@ class AuthRepository {
     );
 
     await _saveSession(loginResponse.accessToken, loginResponse.refreshToken, loginResponse.user);
+    // Login con Google exitoso — este dispositivo ya no necesita volver a
+    // mostrar el campo de código en futuros logins (ver LoginPage).
+    await OnboardingService.instance.markGoogleParentLinked();
 
     return loginResponse.user;
   }
