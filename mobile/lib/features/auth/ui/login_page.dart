@@ -410,6 +410,9 @@ class _LoginPageState extends State<LoginPage> {
                     ),
 
                     // ── Crear cuenta ──────────────────────────
+                    // No tiene sentido para un padre que ya tiene cuenta y
+                    // ya está vinculado en este dispositivo.
+                    if (!_isReturningParent) ...[
                     const SizedBox(height: 12),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -431,6 +434,7 @@ class _LoginPageState extends State<LoginPage> {
                         ),
                       ],
                     ),
+                    ],
                   ],
                 ),
               ),
