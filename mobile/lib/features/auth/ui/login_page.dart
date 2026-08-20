@@ -71,10 +71,6 @@ class _LoginPageState extends State<LoginPage> {
   Future<void> _onGoogleLoginPressed() async {
     FocusScope.of(context).unfocus();
     final invitationToken = _invitationController.text.trim();
-    if (invitationToken.isEmpty) {
-      _showError(_invitationErrorMessages['INVITATION_REQUIRED']!);
-      return;
-    }
     try {
       final idToken = await GoogleSignInService.instance.signIn();
       if (!mounted) return;
