@@ -31,45 +31,18 @@ String _roleKey(UserRole role) {
 
 class _RoleSelectionPageState extends State<RoleSelectionPage> {
   UserRole _selected = UserRole.parent;
-  final _invitationController = TextEditingController();
-
-  @override
-  void dispose() {
-    _invitationController.dispose();
-    super.dispose();
-  }
 
   Future<void> _onContinuePressed() async {
-    final isParent = _selected == UserRole.parent;
-    final invitationToken = _invitationController.text.trim();
-
-    if (isParent && invitationToken.isEmpty) {
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(
-          content: Text('Ingresa el código que te dio el colegio.'),
-          behavior: SnackBarBehavior.floating,
-        ));
-      return;
-    }
-
     final roleKey = _roleKey(_selected);
     await OnboardingService.instance.complete();
     await OnboardingService.instance.setSelectedRole(roleKey);
 
     if (!mounted) return;
-    context.go(
-      AppRouter.login,
-      extra: {
-        'role': roleKey,
-        if (isParent) 'invitationToken': invitationToken,
-      },
-    );
+    context.go(AppRouter.login, extra: {'role': roleKey});
   }
 
   @override
   Widget build(BuildContext context) {
-    final showInvitationField = _selected == UserRole.parent;
     return Scaffold(
       backgroundColor: AppTheme.primaryViolet,
       body: Stack(
@@ -135,38 +108,6 @@ class _RoleSelectionPageState extends State<RoleSelectionPage> {
                       ],
                     ),
                   ),
-
-                  if (showInvitationField) ...[
-                    const SizedBox(height: 4),
-                    SizedBox(
-                      height: 52,
-                      child: TextFormField(
-                        controller: _invitationController,
-                        textInputAction: TextInputAction.done,
-                        style: const TextStyle(color: Colors.white, fontSize: 14),
-                        decoration: InputDecoration(
-                          hintText: 'Código de invitación del colegio',
-                          hintStyle: const TextStyle(color: Color(0xBFFFFFFF), fontSize: 14),
-                          prefixIcon: const Icon(Icons.key_outlined, color: Colors.white, size: 17),
-                          filled: true,
-                          fillColor: Colors.white.withValues(alpha: 0.12),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(26),
-                            borderSide: BorderSide.none,
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(26),
-                            borderSide: BorderSide.none,
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(26),
-                            borderSide: const BorderSide(color: Colors.white, width: 1.5),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                        ),
-                      ),
-                    ),
-                  ],
 
                   const SizedBox(height: 16),
                   SizedBox(

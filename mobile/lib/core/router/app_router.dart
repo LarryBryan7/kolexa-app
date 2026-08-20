@@ -89,8 +89,7 @@ class AppRouter {
           builder: (_, state) {
             final extra = state.extra as Map<String, dynamic>?;
             final role = extra?['role'] as String? ?? OnboardingService.instance.selectedRole;
-            final invitationToken = extra?['invitationToken'] as String?;
-            return LoginPage(role: role, invitationToken: invitationToken);
+            return LoginPage(role: role);
           },
         ),
         GoRoute(
