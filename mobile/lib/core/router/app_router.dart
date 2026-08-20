@@ -86,7 +86,12 @@ class AppRouter {
         ),
         GoRoute(
           path: login,
-          builder: (_, __) => const LoginPage(),
+          builder: (_, state) {
+            final extra = state.extra as Map<String, dynamic>?;
+            final role = extra?['role'] as String? ?? OnboardingService.instance.selectedRole;
+            final invitationToken = extra?['invitationToken'] as String?;
+            return LoginPage(role: role, invitationToken: invitationToken);
+          },
         ),
         GoRoute(
           path: home,
