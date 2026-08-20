@@ -87,7 +87,7 @@ export interface Student {
   isActive: boolean;
   enrollments?: {
     id: string;
-    classroom?: { grade?: string | null; section?: string | null; academicYear: number };
+    classroom?: { id: string; grade?: string | null; section?: string | null; academicYear: number };
   }[];
   _count?: { parents: number };
 }
