@@ -14,6 +14,10 @@ class OnboardingService {
 
   static const String _keyGoogleParentLinked = 'google_parent_linked_once_v1';
 
+  static const String _keyLastParentFirstName = 'last_parent_first_name_v1';
+  static const String _keyLastParentLastName = 'last_parent_last_name_v1';
+  static const String _keyLastParentAvatar = 'last_parent_avatar_v1';
+
   // Instancia cacheada de SharedPreferences. Se inicializa en main()
   // ANTES de runApp para que `isCompleted` sea síncrono.
   SharedPreferences? _prefs;
@@ -53,5 +57,21 @@ class OnboardingService {
 
   Future<void> markGoogleParentLinked() async {
     await _prefs?.setBool(_keyGoogleParentLinked, true);
+  }
+
+  String? get lastParentFirstName => _prefs?.getString(_keyLastParentFirstName);
+  String? get lastParentLastName => _prefs?.getString(_keyLastParentLastName);
+  String? get lastParentAvatar => _prefs?.getString(_keyLastParentAvatar);
+
+  Future<void> saveLastParentProfile({
+    required String firstName,
+    String? lastName,
+    String? avatar,
+  }) async {
+    await Future.wait([
+      _prefs?.setString(_keyLastParentFirstName, firstName) ?? Future.value(),
+      if (lastName != null) _prefs?.setString(_keyLastParentLastName, lastName) ?? Future.value(),
+      if (avatar != null) _prefs?.setString(_keyLastParentAvatar, avatar) ?? Future.value(),
+    ]);
   }
 }

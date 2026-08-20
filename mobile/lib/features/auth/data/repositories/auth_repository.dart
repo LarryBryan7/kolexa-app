@@ -47,9 +47,12 @@ class AuthRepository {
     );
 
     await _saveSession(loginResponse.accessToken, loginResponse.refreshToken, loginResponse.user);
-    // Login con Google exitoso — este dispositivo ya no necesita volver a
-    // mostrar el campo de código en futuros logins (ver LoginPage).
     await OnboardingService.instance.markGoogleParentLinked();
+    await OnboardingService.instance.saveLastParentProfile(
+      firstName: loginResponse.user.firstName,
+      lastName: loginResponse.user.lastName,
+      avatar: loginResponse.user.avatar,
+    );
 
     return loginResponse.user;
   }
