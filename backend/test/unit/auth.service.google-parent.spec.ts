@@ -94,7 +94,7 @@ describe('AuthService.loginWithGoogle — flujo de Parent con invitación', () =
       user: { findUnique: jest.fn() },
       role: { findUnique: jest.fn().mockResolvedValue({ id: PARENT_ROLE_ID }) },
       schoolInvitation: { findUnique: jest.fn() },
-      parent: { findUnique: jest.fn() },
+      parent: { findUnique: jest.fn(), findFirst: jest.fn().mockResolvedValue(null) },
       $transaction: jest.fn(async (cb: any) => {
         mockCallOrder.push('prisma.$transaction');
         return cb(txMock);
@@ -127,11 +127,14 @@ describe('AuthService.loginWithGoogle — flujo de Parent con invitación', () =
     jest.spyOn<any, any>(service, 'savePushToken').mockResolvedValue(undefined);
   });
 
-  it('INVITATION_REQUIRED — rechaza si falta invitationToken', async () => {
+  it('INVITATION_REQUIRED — rechaza si falta invitationToken y no es un padre de retorno', async () => {
+    prisma.user.findUnique.mockResolvedValue(null); // googleSub desconocido — no hay a quién "regresar"
     await expect(
       service.loginWithGoogle({ idToken: 'x' } as any),
     ).rejects.toMatchObject({ message: 'INVITATION_REQUIRED' });
-    expect(prisma.user.findUnique).not.toHaveBeenCalled(); // no crea User antes de validar
+    // No se CREA ningún User antes de validar la invitación — sí se lo busca
+    // (paso 2, para detectar el atajo de retorno), pero nunca se escribe.
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it('INVITATION_NOT_FOUND — rechaza si el token no existe', async () => {
@@ -317,6 +320,74 @@ describe('AuthService.loginWithGoogle — flujo de Parent con invitación', () =
     expect(result.accessToken).toBe('access');
     expect(prisma.$transaction).not.toHaveBeenCalled(); // no toca la BD de nuevo
     expect(mockCallOrder).not.toContain('bcrypt.hash'); // tampoco hashea nada
+  });
+
+  describe('Atajo de retorno — padre ya vinculado, SIN invitationToken', () => {
+    it('permite el login sin invitationToken cuando el googleSub ya está vinculado a un Parent', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 7n, email: GOOGLE_EMAIL, firstName: 'Padre', lastName: 'De Prueba',
+        avatar: null, needsPasswordChange: false, isActive: true, deletedAt: null,
+      });
+      prisma.parent.findFirst.mockResolvedValue({ id: PARENT_ID }); // ya vinculado
+
+      const result = await service.loginWithGoogle({ idToken: 'x' } as any); // sin invitationToken
+
+      expect(result.accessToken).toBe('access');
+      expect(prisma.parent.findFirst).toHaveBeenCalledWith({
+        where: { userId: 7n },
+        select: { id: true },
+      });
+      // No toca nada de invitación ni abre transacción — ya estaba todo vinculado.
+      expect(prisma.schoolInvitation.findUnique).not.toHaveBeenCalled();
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('si SÍ mandan invitationToken, NO aplica el atajo aunque ya haya un Parent vinculado (puede ser una vinculación nueva para otro Parent)', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 7n, email: GOOGLE_EMAIL, firstName: 'Padre', lastName: 'De Prueba',
+        avatar: null, needsPasswordChange: false, isActive: true, deletedAt: null,
+      });
+      prisma.schoolInvitation.findUnique.mockResolvedValue(validInvitation);
+      prisma.parent.findUnique.mockResolvedValue(validParent); // Parent B, distinto, sin vincular
+      prisma._tx.parent.updateMany.mockResolvedValue({ count: 1 });
+      prisma._tx.schoolInvitation.updateMany.mockResolvedValue({ count: 1 });
+
+      const result = await service.loginWithGoogle({
+        idToken: 'x',
+        invitationToken: 't',
+      } as any);
+
+      expect(result.accessToken).toBe('access');
+      expect(prisma.parent.findFirst).not.toHaveBeenCalled(); // el atajo ni se evalúa
+      expect(prisma.schoolInvitation.findUnique).toHaveBeenCalled(); // sí procesa la invitación
+      expect(prisma._tx.parent.updateMany).toHaveBeenCalledWith({
+        where: { id: PARENT_ID, userId: null },
+        data: { userId: 7n, linkStatus: 'linked' },
+      });
+    });
+
+    it('cuenta inactiva/eliminada: rechaza incluso si es un padre ya vinculado (el chequeo corre antes del atajo)', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 7n, email: GOOGLE_EMAIL, firstName: 'Padre', lastName: 'De Prueba',
+        avatar: null, needsPasswordChange: false, isActive: false, deletedAt: null,
+      });
+      await expect(
+        service.loginWithGoogle({ idToken: 'x' } as any),
+      ).rejects.toMatchObject({ message: 'La cuenta está inactiva o ha sido eliminada' });
+      expect(prisma.parent.findFirst).not.toHaveBeenCalled(); // ni llega a chequear el atajo
+    });
+
+    it('User existente pero SIN Parent vinculado (googleSub sin vínculo): NO aplica el atajo, exige invitationToken', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 7n, email: GOOGLE_EMAIL, firstName: 'Otro', lastName: 'Usuario',
+        avatar: null, needsPasswordChange: false, isActive: true, deletedAt: null,
+      });
+      prisma.parent.findFirst.mockResolvedValue(null); // sin vínculo todavía
+
+      await expect(
+        service.loginWithGoogle({ idToken: 'x' } as any), // sin invitationToken
+      ).rejects.toMatchObject({ message: 'INVITATION_REQUIRED' });
+    });
   });
 
   it('INVITATION_EMAIL_MISMATCH — rechaza si el email de Google no está verificado (email_verified: false)', async () => {

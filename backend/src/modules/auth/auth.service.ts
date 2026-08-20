@@ -140,8 +140,25 @@ export class AuthService {
     }
     const googleEmail = (payload.email as string).trim().toLowerCase();
 
-    // 2. Invitación obligatoria para el flujo de padre. No se crea NINGÚN
-    //    User antes de validar esto — evita cuentas "flotantes" sin colegio.
+    const existing = await this.prisma.user.findUnique({
+      where: { googleSub: payload.sub },
+      select: {
+        id: true, email: true, firstName: true, lastName: true, avatar: true,
+        needsPasswordChange: true, isActive: true, deletedAt: true,
+      },
+    });
+    if (existing && (!existing.isActive || existing.deletedAt)) {
+      throw new UnauthorizedException('La cuenta está inactiva o ha sido eliminada');
+    }
+
+    let user = existing;
+
+    const returningParent = existing && !dto.invitationToken
+      ? await this.prisma.parent.findFirst({ where: { userId: existing.id }, select: { id: true } })
+      : null;
+
+    if (existing && returningParent) {
+    } else {
     if (!dto.invitationToken) {
       throw new UnauthorizedException('INVITATION_REQUIRED');
     }
@@ -164,20 +181,6 @@ export class AuthService {
     if (!parentRecord || parentRecord.schoolId !== invitation.schoolId) {
       throw new BadRequestException('INVITATION_INVALID_ROLE');
     }
-
-    // 3. Buscar el usuario por googleSub (fuente de verdad del token validado).
-    const existing = await this.prisma.user.findUnique({
-      where: { googleSub: payload.sub },
-      select: {
-        id: true, email: true, firstName: true, lastName: true, avatar: true,
-        needsPasswordChange: true, isActive: true, deletedAt: true,
-      },
-    });
-    if (existing && (!existing.isActive || existing.deletedAt)) {
-      throw new UnauthorizedException('La cuenta está inactiva o ha sido eliminada');
-    }
-
-    let user = existing;
 
     // 4. Ramificación por el estado de Parent.userId — Casos A/B/C.
     if (parentRecord.userId !== null) {
@@ -302,6 +305,7 @@ export class AuthService {
         }
       }
     }
+    } // fin else (no era un padre de retorno) — ver comentario del paso 2
 
     if (!user) {
       throw new UnauthorizedException('No se pudo resolver la cuenta de usuario');
