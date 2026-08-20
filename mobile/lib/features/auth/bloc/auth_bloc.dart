@@ -3,7 +3,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../data/repositories/auth_repository.dart';
-import '../../../core/services/onboarding_service.dart';
 import 'auth_event.dart';
 import 'auth_state.dart';
 
@@ -99,8 +98,6 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   ) async {
     emit(const AuthLoading());
 
-    final wasFirstLink = !OnboardingService.instance.hasLinkedGoogleParentBefore;
-
     try {
       final user = await _repository.loginWithGoogle(
         idToken: event.idToken,
@@ -108,7 +105,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         firebaseToken: event.firebaseToken,
       );
 
-      emit(AuthAuthenticated(user, isFirstGoogleLogin: wasFirstLink));
+      emit(AuthAuthenticated(user));
     } catch (e) {
       emit(AuthError(e.toString().replaceFirst('Exception: ', '')));
     }

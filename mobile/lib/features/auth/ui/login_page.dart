@@ -149,7 +149,8 @@ class _LoginPageState extends State<LoginPage> {
       body: BlocConsumer<AuthBloc, AuthState>(
         listener: (context, state) {
           if (state is AuthAuthenticated) {
-            if (state.isFirstGoogleLogin) {
+            final missingPhoto = state.user.children.any((c) => c.avatarUrl == null);
+            if (missingPhoto) {
               context.go(AppRouter.hijosEncontrados, extra: state.user);
             } else {
               context.go(AppRouter.home);
