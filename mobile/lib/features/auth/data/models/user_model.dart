@@ -135,7 +135,13 @@ class UserModel {
       'lastName': lastName,
       if (phone != null) 'phone': phone,
       if (avatar != null) 'avatar': avatar,
-      'roles': roles,
+      'roles': roles
+          .map((r) => {
+                'role': r,
+                if (schoolId != null) 'schoolId': schoolId.toString(),
+                if (schoolName != null) 'schoolName': schoolName,
+              })
+          .toList(),
       if (schoolId != null) 'schoolId': schoolId,
       if (schoolName != null) 'schoolName': schoolName,
       'children': children.map((c) => c.toJson()).toList(),
