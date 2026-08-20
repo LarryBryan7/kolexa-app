@@ -1,5 +1,7 @@
 // auth_event.dart — Eventos del BLoC de Autenticación
 
+import '../data/models/user_model.dart';
+
 sealed class AuthEvent {
   const AuthEvent();
 }
@@ -58,4 +60,10 @@ final class ChangePasswordEvent extends AuthEvent {
     required this.currentPassword,
     required this.newPassword,
   });
+}
+
+// ── UserUpdatedEvent ──────────────────────────────────────
+final class UserUpdatedEvent extends AuthEvent {
+  final UserModel user;
+  const UserUpdatedEvent(this.user);
 }

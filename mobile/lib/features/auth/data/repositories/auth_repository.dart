@@ -96,6 +96,11 @@ class AuthRepository {
 
   Future<bool> hasActiveSession() => TokenStore.hasAccessToken();
 
+  Future<void> updateCachedUser(UserModel user) async {
+    final prefs = await _prefs;
+    await prefs.setString(_userKey, jsonEncode(user.toJson()));
+  }
+
   Future<void> changePassword({
     required String currentPassword,
     required String newPassword,

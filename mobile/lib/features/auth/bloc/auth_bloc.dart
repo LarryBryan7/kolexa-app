@@ -3,6 +3,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../data/repositories/auth_repository.dart';
+import '../../../core/services/onboarding_service.dart';
 import 'auth_event.dart';
 import 'auth_state.dart';
 
@@ -19,6 +20,16 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     on<GoogleLoginEvent>(_onGoogleLogin);
     on<LogoutEvent>(_onLogout);
     on<ChangePasswordEvent>(_onChangePassword);
+    on<UserUpdatedEvent>(_onUserUpdated);
+  }
+
+  // ── _onUserUpdated ────────────────────────────────────────
+  Future<void> _onUserUpdated(
+    UserUpdatedEvent event,
+    Emitter<AuthState> emit,
+  ) async {
+    await _repository.updateCachedUser(event.user);
+    emit(AuthAuthenticated(event.user));
   }
 
   // ── _onCheckAuth ─────────────────────────────────────────
@@ -88,6 +99,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   ) async {
     emit(const AuthLoading());
 
+    final wasFirstLink = !OnboardingService.instance.hasLinkedGoogleParentBefore;
+
     try {
       final user = await _repository.loginWithGoogle(
         idToken: event.idToken,
@@ -95,7 +108,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         firebaseToken: event.firebaseToken,
       );
 
-      emit(AuthAuthenticated(user));
+      emit(AuthAuthenticated(user, isFirstGoogleLogin: wasFirstLink));
     } catch (e) {
       emit(AuthError(e.toString().replaceFirst('Exception: ', '')));
     }

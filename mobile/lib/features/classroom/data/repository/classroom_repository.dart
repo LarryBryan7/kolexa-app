@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import '../../../../core/api/api_client.dart';
 import '../models/gc_models.dart';
 
@@ -55,6 +56,14 @@ class ClassroomRepository {
     final res = await _api.get('classroom/parent/home?studentId=$studentId');
     final data = res.data as Map<String, dynamic>;
     return ParentHomeData.fromJson(data);
+  }
+
+  Future<String> uploadAvatar(String studentId, String photoPath) async {
+    final formData = FormData.fromMap({
+      'photo': await MultipartFile.fromFile(photoPath, filename: photoPath.split('/').last),
+    });
+    final res = await _api.post('classroom/student/$studentId/avatar', data: formData);
+    return (res.data as Map<String, dynamic>)['avatarUrl'] as String;
   }
 }
 

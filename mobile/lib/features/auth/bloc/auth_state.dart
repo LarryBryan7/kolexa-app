@@ -21,7 +21,9 @@ final class AuthLoading extends AuthState {
 final class AuthAuthenticated extends AuthState {
   final UserModel user; // El usuario autenticado con sus datos
 
-  const AuthAuthenticated(this.user);
+  final bool isFirstGoogleLogin;
+
+  const AuthAuthenticated(this.user, {this.isFirstGoogleLogin = false});
 
   @override
   String toString() => 'AuthAuthenticated(user: ${user.email})';
