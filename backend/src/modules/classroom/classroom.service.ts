@@ -133,6 +133,28 @@ export class ClassroomService {
     }
   }
 
+  // ── Foto de perfil del alumno (subida por el padre) ──────
+  async uploadStudentAvatar(
+    studentId: bigint,
+    file: Express.Multer.File,
+  ): Promise<{ avatarUrl: string }> {
+    const ext = (file.originalname.split('.').pop() ?? 'jpg').toLowerCase();
+    const storagePath = `${studentId}/avatar.${ext}`;
+
+    const path = await this.storage.uploadPhoto(file, storagePath, 'avatars', true);
+    if (!path) {
+      throw new Error('No se pudo subir la foto');
+    }
+
+    await this.prisma.student.update({
+      where: { id: studentId },
+      data: { avatar: path },
+    });
+
+    const [signedUrl] = await this.storage.getSignedUrls([path], 3600, 'avatars');
+    return { avatarUrl: signedUrl ?? '' };
+  }
+
   // ── Verifica si el docente tiene cuenta conectada ────────
   async isTeacherConnected(userId: bigint): Promise<boolean> {
     const token = await this.prisma.teacherGoogleToken.findUnique({ where: { userId } });

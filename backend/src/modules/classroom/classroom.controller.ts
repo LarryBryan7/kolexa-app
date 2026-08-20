@@ -1,13 +1,17 @@
 import {
   Controller, Get, Post, Param, Query, Res, UseGuards, Request, Header,
-  UnauthorizedException,
+  UnauthorizedException, UseInterceptors, UploadedFile, BadRequestException,
 } from '@nestjs/common';
 import { Response } from 'express';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { ClassroomService } from './classroom.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser, UserPayload } from '../../common/decorators/current-user.decorator';
 import { ParseBigIntPipe } from '../../common/pipes/parse-bigint.pipe';
+
+const AVATAR_MAX_BYTES = 5 * 1024 * 1024; // 5MB
 
 function googleTokenExpiredException(): UnauthorizedException {
   return new UnauthorizedException({
@@ -162,6 +166,34 @@ export class ClassroomController {
   async getParentHome(@Query('studentId', ParseBigIntPipe) studentId: bigint, @CurrentUser() user: UserPayload) {
     await this.classroomService.assertStudentOwnedByParent(user.sub, studentId);
     return this.classroomService.getParentHome(studentId);
+  }
+
+  // ── POST /classroom/student/:studentId/avatar ─────────────
+  @UseGuards(JwtAuthGuard)
+  @Post('student/:studentId/avatar')
+  @UseInterceptors(
+    FileInterceptor('photo', {
+      storage: memoryStorage(),
+      limits: { fileSize: AVATAR_MAX_BYTES },
+      fileFilter: (_req, file, cb) => {
+        if (!file.mimetype.startsWith('image/')) {
+          cb(new BadRequestException('El archivo debe ser una imagen'), false);
+          return;
+        }
+        cb(null, true);
+      },
+    }),
+  )
+  async uploadAvatar(
+    @Param('studentId', ParseBigIntPipe) studentId: bigint,
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() user: UserPayload,
+  ) {
+    await this.classroomService.assertStudentOwnedByParent(user.sub, studentId);
+    if (!file) {
+      throw new BadRequestException('Falta el archivo de la foto');
+    }
+    return this.classroomService.uploadStudentAvatar(studentId, file);
   }
 
   // ── GET /classroom/student/:studentId/status ──────────────
