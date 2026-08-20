@@ -6,6 +6,17 @@ import { Response } from 'express';
 import { ClassroomService } from './classroom.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { Public } from '../../common/decorators/public.decorator';
+import { CurrentUser, UserPayload } from '../../common/decorators/current-user.decorator';
+import { ParseBigIntPipe } from '../../common/pipes/parse-bigint.pipe';
+
+function googleTokenExpiredException(): UnauthorizedException {
+  return new UnauthorizedException({
+    statusCode: 401,
+    code: 'GOOGLE_TOKEN_EXPIRED',
+    message: 'TOKEN_EXPIRED',
+    error: 'Unauthorized',
+  });
+}
 
 @Controller('classroom')
 export class ClassroomController {
@@ -15,8 +26,9 @@ export class ClassroomController {
   // El padre obtiene la URL para que el alumno autorice Classroom
   @UseGuards(JwtAuthGuard)
   @Get('student/:studentId/auth-url')
-  getAuthUrl(@Param('studentId') studentId: string) {
-    const url = this.classroomService.getAuthUrl(studentId);
+  async getAuthUrl(@Param('studentId', ParseBigIntPipe) studentId: bigint, @CurrentUser() user: UserPayload) {
+    await this.classroomService.assertStudentOwnedByParent(user.sub, studentId);
+    const url = this.classroomService.getAuthUrl(studentId.toString());
     return { url };
   }
 
@@ -101,7 +113,7 @@ export class ClassroomController {
     } catch (e: any) {
       const msg: string = e?.response?.data?.error ?? e?.message ?? '';
       if (msg.includes('invalid_grant') || msg.includes('invalid_token')) {
-        throw new UnauthorizedException('TOKEN_EXPIRED');
+        throw googleTokenExpiredException();
       }
       throw e;
     }
@@ -136,22 +148,28 @@ export class ClassroomController {
   // ── GET /classroom/parent/today-summary ──────────────────
   @UseGuards(JwtAuthGuard)
   @Get('parent/today-summary')
-  async getParentTodaySummary() {
-    return this.classroomService.getParentTodaySummary();
+  async getParentTodaySummary(
+    @Query('studentId', ParseBigIntPipe) studentId: bigint,
+    @CurrentUser() user: UserPayload,
+  ) {
+    await this.classroomService.assertStudentOwnedByParent(user.sub, studentId);
+    return this.classroomService.getParentTodaySummary(studentId);
   }
 
   // ── GET /classroom/parent/home?studentId=X ───────────────
   @UseGuards(JwtAuthGuard)
   @Get('parent/home')
-  async getParentHome(@Query('studentId') studentId: string) {
-    return this.classroomService.getParentHome(BigInt(studentId));
+  async getParentHome(@Query('studentId', ParseBigIntPipe) studentId: bigint, @CurrentUser() user: UserPayload) {
+    await this.classroomService.assertStudentOwnedByParent(user.sub, studentId);
+    return this.classroomService.getParentHome(studentId);
   }
 
   // ── GET /classroom/student/:studentId/status ──────────────
   @UseGuards(JwtAuthGuard)
   @Get('student/:studentId/status')
-  async getStatus(@Param('studentId') studentId: string) {
-    const connected = await this.classroomService.isConnected(BigInt(studentId));
+  async getStatus(@Param('studentId', ParseBigIntPipe) studentId: bigint, @CurrentUser() user: UserPayload) {
+    await this.classroomService.assertStudentOwnedByParent(user.sub, studentId);
+    const connected = await this.classroomService.isConnected(studentId);
     return { connected };
   }
 
@@ -159,13 +177,14 @@ export class ClassroomController {
   // Sincroniza datos desde Google Classroom hacia la BD de Kolexa
   @UseGuards(JwtAuthGuard)
   @Post('student/:studentId/sync')
-  async sync(@Param('studentId') studentId: string) {
+  async sync(@Param('studentId', ParseBigIntPipe) studentId: bigint, @CurrentUser() user: UserPayload) {
+    await this.classroomService.assertStudentOwnedByParent(user.sub, studentId);
     try {
-      return await this.classroomService.syncStudent(BigInt(studentId));
+      return await this.classroomService.syncStudent(studentId);
     } catch (e: any) {
       const msg: string = e?.response?.data?.error ?? e?.message ?? '';
       if (msg.includes('invalid_grant') || msg.includes('invalid_token')) {
-        throw new UnauthorizedException('TOKEN_EXPIRED');
+        throw googleTokenExpiredException();
       }
       throw e;
     }
@@ -174,16 +193,18 @@ export class ClassroomController {
   // ── GET /classroom/student/:studentId/courses ─────────────
   @UseGuards(JwtAuthGuard)
   @Get('student/:studentId/courses')
-  async getCourses(@Param('studentId') studentId: string) {
-    return this.classroomService.getCourses(BigInt(studentId));
+  async getCourses(@Param('studentId', ParseBigIntPipe) studentId: bigint, @CurrentUser() user: UserPayload) {
+    await this.classroomService.assertStudentOwnedByParent(user.sub, studentId);
+    return this.classroomService.getCourses(studentId);
   }
 
   // ── GET /classroom/student/:studentId/upcoming ────────────
   // Próximas tareas con fecha de entrega (todos los cursos)
   @UseGuards(JwtAuthGuard)
   @Get('student/:studentId/upcoming')
-  async getUpcoming(@Param('studentId') studentId: string) {
-    return this.classroomService.getUpcomingCoursework(BigInt(studentId));
+  async getUpcoming(@Param('studentId', ParseBigIntPipe) studentId: bigint, @CurrentUser() user: UserPayload) {
+    await this.classroomService.assertStudentOwnedByParent(user.sub, studentId);
+    return this.classroomService.getUpcomingCoursework(studentId);
   }
 
   // ── GET /classroom/student/:studentId/overview ────────────
@@ -191,13 +212,14 @@ export class ClassroomController {
   // en UNA sola respuesta. Reduce de 4 requests HTTP a 1.
   @UseGuards(JwtAuthGuard)
   @Get('student/:studentId/overview')
-  async getOverview(@Param('studentId') studentId: string) {
+  async getOverview(@Param('studentId', ParseBigIntPipe) studentId: bigint, @CurrentUser() user: UserPayload) {
+    await this.classroomService.assertStudentOwnedByParent(user.sub, studentId);
     try {
-      return await this.classroomService.getOverview(BigInt(studentId));
+      return await this.classroomService.getOverview(studentId);
     } catch (e: any) {
       const msg: string = e?.response?.data?.error ?? e?.message ?? '';
       if (msg.includes('invalid_grant') || msg.includes('invalid_token')) {
-        throw new UnauthorizedException('TOKEN_EXPIRED');
+        throw googleTokenExpiredException();
       }
       throw e;
     }
@@ -208,7 +230,8 @@ export class ClassroomController {
   // connected + upcoming en UNA sola petición (sin courses ni sync).
   @UseGuards(JwtAuthGuard)
   @Get('student/:studentId/upcoming-status')
-  async getUpcomingStatus(@Param('studentId') studentId: string) {
-    return this.classroomService.getUpcomingStatus(BigInt(studentId));
+  async getUpcomingStatus(@Param('studentId', ParseBigIntPipe) studentId: bigint, @CurrentUser() user: UserPayload) {
+    await this.classroomService.assertStudentOwnedByParent(user.sub, studentId);
+    return this.classroomService.getUpcomingStatus(studentId);
   }
 }

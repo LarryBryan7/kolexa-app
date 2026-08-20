@@ -18,7 +18,7 @@ const loginSchema = z.object({
 type LoginForm = z.infer<typeof loginSchema>;
 
 export function LoginPage() {
-  const { login, isAuthenticated } = useAuth();
+  const { login, logout, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
@@ -43,6 +43,7 @@ export function LoginPage() {
       const user = await login(values.email, values.password);
       const hasAdminRole = user.roles?.some((r) => r.role === 'school_admin');
       if (!hasAdminRole) {
+        logout();
         toast({
           title: 'Acceso restringido',
           description: 'Esta cuenta no tiene permisos de administrador de institución.',

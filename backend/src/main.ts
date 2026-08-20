@@ -15,6 +15,9 @@ async function bootstrap() {
   // Crea la aplicación NestJS usando el módulo raíz (AppModule)
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
+  // TODOS los usuarios juntos (comparten la IP aparente del proxy) en vez
+  app.set('trust proxy', 1);
+
   // Sirve archivos subidos desde la carpeta uploads/ en la ruta /uploads/
   app.useStaticAssets(join(process.cwd(), 'uploads'), { prefix: '/uploads' });
 

@@ -1,7 +1,9 @@
 // app.module.ts — Módulo raíz de la aplicación
 
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 
 // ── Infraestructura ───────────────────────────────────────
 import { PrismaModule } from './prisma/prisma.module';
@@ -46,6 +48,8 @@ import { ImportModule } from './modules/import/import.module';
     // Variables de entorno disponibles en toda la app
     ConfigModule.forRoot({ isGlobal: true, envFilePath: '.env' }),
 
+    ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 300 }]),
+
     // Conexión global a PostgreSQL via Prisma
     PrismaModule,
 
@@ -83,6 +87,11 @@ import { ImportModule } from './modules/import/import.module';
     // ── Web Admin ─────────────────────────────────────────────
     AdminModule,           // CRUD de administración (solo school_admin)
     ImportModule,          // Importación masiva (modo seguro: preview + confirm)
+  ],
+  providers: [
+    // Global — corre en TODAS las rutas (con el límite generoso de
+    // arriba salvo que el endpoint tenga su propio @Throttle()).
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
 })
 export class AppModule {}

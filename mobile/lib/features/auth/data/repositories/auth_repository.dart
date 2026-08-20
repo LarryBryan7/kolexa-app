@@ -2,15 +2,14 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../datasources/auth_remote_datasource.dart';
 import '../models/user_model.dart';
+import '../../../../core/api/token_store.dart';
 import '../../../../core/api/interceptors/auth_interceptor.dart';
 import '../../../../core/services/google_sign_in_service.dart';
 
 class AuthRepository {
   final AuthRemoteDataSource _remoteDataSource;
 
-  static const String _accessTokenKey  = 'access_token';
-  static const String _refreshTokenKey = 'refresh_token';
-  static const String _userKey         = 'current_user_json';
+  static const String _userKey = 'current_user_json';
 
   AuthRepository(this._remoteDataSource);
 
@@ -27,10 +26,6 @@ class AuthRepository {
       firebaseToken: firebaseToken,
     );
 
-    AuthInterceptor.setCache(
-      accessToken: loginResponse.accessToken,
-      refreshToken: loginResponse.refreshToken,
-    );
     await _saveSession(loginResponse.accessToken, loginResponse.refreshToken, loginResponse.user);
 
     return loginResponse.user;
@@ -41,29 +36,28 @@ class AuthRepository {
   // Recibe el ID Token de Google, lo envía al backend y guarda la sesión.
   Future<UserModel> loginWithGoogle({
     required String idToken,
+    required String invitationToken,
     String? firebaseToken,
   }) async {
     final loginResponse = await _remoteDataSource.loginWithGoogle(
       idToken: idToken,
+      invitationToken: invitationToken,
       firebaseToken: firebaseToken,
     );
 
-    AuthInterceptor.setCache(
-      accessToken: loginResponse.accessToken,
-      refreshToken: loginResponse.refreshToken,
-    );
     await _saveSession(loginResponse.accessToken, loginResponse.refreshToken, loginResponse.user);
 
     return loginResponse.user;
   }
 
   Future<void> logout() async {
+    final refreshToken = await TokenStore.readRefreshToken();
     try {
-      await _remoteDataSource.logout();
+      await _remoteDataSource.logout(refreshToken: refreshToken);
     } catch (_) {}
     finally {
-      AuthInterceptor.clearCache();
-      await _clearLocalData();
+      await TokenStore.clear();
+      await _clearLocalUser();
       // Cerrar la sesión de Google en el dispositivo para que el próximo
       // login vuelva a mostrar el selector de cuentas.
       try {
@@ -73,29 +67,23 @@ class AuthRepository {
   }
 
   Future<UserModel?> getCurrentUser() async {
-    final prefs = await _prefs;
-    final token = prefs.getString(_accessTokenKey);
+    final token = await TokenStore.readAccessToken();
     if (token == null) return null;
 
-    // Pre-cargar tokens en memoria para que el interceptor los tenga listos
-    final refreshToken = prefs.getString(_refreshTokenKey);
-    AuthInterceptor.setCache(accessToken: token, refreshToken: refreshToken ?? '');
-
+    final prefs = await _prefs;
     final userJson = prefs.getString(_userKey);
     if (userJson == null) return null;
 
     try {
       return UserModel.fromJson(jsonDecode(userJson) as Map<String, dynamic>);
     } catch (_) {
-      await _clearLocalData();
+      await TokenStore.clear();
+      await _clearLocalUser();
       return null;
     }
   }
 
-  Future<bool> hasActiveSession() async {
-    final prefs = await _prefs;
-    return prefs.containsKey(_accessTokenKey);
-  }
+  Future<bool> hasActiveSession() => TokenStore.hasAccessToken();
 
   Future<void> changePassword({
     required String currentPassword,
@@ -108,20 +96,15 @@ class AuthRepository {
   }
 
   Future<void> _saveSession(String accessToken, String refreshToken, UserModel user) async {
+    await TokenStore.save(accessToken: accessToken, refreshToken: refreshToken);
+    AuthInterceptor.resetSessionExpiredFlag();
+
     final prefs = await _prefs;
-    await Future.wait([
-      prefs.setString(_accessTokenKey, accessToken),
-      prefs.setString(_refreshTokenKey, refreshToken),
-      prefs.setString(_userKey, jsonEncode(user.toJson())),
-    ]);
+    await prefs.setString(_userKey, jsonEncode(user.toJson()));
   }
 
-  Future<void> _clearLocalData() async {
+  Future<void> _clearLocalUser() async {
     final prefs = await _prefs;
-    await Future.wait([
-      prefs.remove(_accessTokenKey),
-      prefs.remove(_refreshTokenKey),
-      prefs.remove(_userKey),
-    ]);
+    await prefs.remove(_userKey);
   }
 }

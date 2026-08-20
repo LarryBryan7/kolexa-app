@@ -39,10 +39,12 @@ class AuthRemoteDataSource {
   // ── loginWithGoogle ───────────────────────────────────────
   Future<LoginResponse> loginWithGoogle({
     required String idToken,
+    required String invitationToken,
     String? firebaseToken,
   }) async {
     final body = {
       'idToken': idToken,
+      'invitationToken': invitationToken,
       if (firebaseToken != null) 'firebaseToken': firebaseToken,
     };
 
@@ -53,10 +55,13 @@ class AuthRemoteDataSource {
   }
 
   // ── logout ────────────────────────────────────────────────
-  Future<void> logout() async {
+  Future<void> logout({String? refreshToken}) async {
     // POST /auth/logout (este endpoint requiere JWT — no es @Public)
     // El AuthInterceptor agrega el Bearer token automáticamente
-    await _client.post('auth/logout');
+    await _client.post(
+      'auth/logout',
+      data: refreshToken != null ? {'refreshToken': refreshToken} : null,
+    );
   }
 
   // ── changePassword ────────────────────────────────────────

@@ -47,8 +47,6 @@ export class GradesService {
   }
 
   // ── setGrade ──────────────────────────────────────────────
-  // El profesor registra o actualiza la nota de un alumno.
-  // Upsert: crea si no existe, actualiza si ya hay una nota.
   async setGrade(
     data: {
       studentId: number;
@@ -70,6 +68,23 @@ export class GradesService {
     if (!student) throw new NotFoundException('Alumno no encontrado');
     if (!course) throw new NotFoundException('Curso no encontrado');
     if (!period) throw new NotFoundException('Periodo no encontrado');
+
+    const currentYear = new Date().getFullYear();
+    const enrollment = await this.prisma.studentEnrollment.findFirst({
+      where: { studentId: data.studentId, academicYear: currentYear, isActive: true },
+    });
+    if (!enrollment) {
+      throw new ForbiddenException('No dictas este curso a este alumno');
+    }
+
+    const classroomCourse = await this.prisma.classroomCourse.findUnique({
+      where: {
+        classroomId_courseId: { classroomId: enrollment.classroomId, courseId: data.courseId },
+      },
+    });
+    if (!classroomCourse || classroomCourse.teacherId !== teacherId) {
+      throw new ForbiddenException('No dictas este curso a este alumno');
+    }
 
     return this.prisma.grade.upsert({
       where: {

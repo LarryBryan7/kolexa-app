@@ -96,7 +96,6 @@ export class AppointmentsService {
   }
 
   // ── bookAppointment ───────────────────────────────────────
-  // El padre reserva un slot disponible.
   async bookAppointment(
     data: {
       slotId: number;
@@ -105,6 +104,11 @@ export class AppointmentsService {
     },
     parentId: bigint,
   ) {
+    const rel = await this.prisma.userStudent.findFirst({
+      where: { userId: parentId, studentId: data.studentId },
+    });
+    if (!rel) throw new ForbiddenException('No tienes acceso a este alumno');
+
     // Verificar que el slot existe y está disponible
     const slot = await this.prisma.appointmentSlot.findUnique({
       where: { id: data.slotId },

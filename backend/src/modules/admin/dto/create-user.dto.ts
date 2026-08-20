@@ -6,8 +6,10 @@ import {
   IsIn,
   MaxLength,
 } from 'class-validator';
+import { NormalizeEmail } from '../../../common/decorators/normalize-email.decorator';
 
 export class CreateUserDto {
+  @NormalizeEmail()
   @IsEmail({}, { message: 'Email inválido' })
   email: string;
 

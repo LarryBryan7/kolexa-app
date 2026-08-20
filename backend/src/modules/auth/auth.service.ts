@@ -111,7 +111,10 @@ export class AuthService {
   }
 
   // ── LOGIN CON GOOGLE (FASE 1) ──────────────────────────
+  // ── loginWithGoogle ───────────────────────────────────────
   async loginWithGoogle(dto: GoogleLoginDto) {
+    // 1. Validar el ID Token con Google — SIN CAMBIOS respecto a la
+    //    validación criptográfica original (firma, issuer, audience, exp).
     const clientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
     if (!clientId) {
       throw new UnauthorizedException('Google Sign-In no está configurado');
@@ -126,15 +129,43 @@ export class AuthService {
       });
       payload = ticket.getPayload();
     } catch (err) {
-      // Token inválido, expirado o con audience incorrecto.
       throw new UnauthorizedException('El ID Token de Google es inválido o ha expirado');
     }
 
     if (!payload || !payload.sub || !payload.email) {
       throw new UnauthorizedException('El ID Token de Google no contiene datos válidos');
     }
+    if (payload.email_verified !== true) {
+      throw new UnauthorizedException('INVITATION_EMAIL_MISMATCH');
+    }
+    const googleEmail = (payload.email as string).trim().toLowerCase();
 
-    // 2. Buscar el usuario por googleSub.
+    // 2. Invitación obligatoria para el flujo de padre. No se crea NINGÚN
+    //    User antes de validar esto — evita cuentas "flotantes" sin colegio.
+    if (!dto.invitationToken) {
+      throw new UnauthorizedException('INVITATION_REQUIRED');
+    }
+
+    const invitation = await this.prisma.schoolInvitation.findUnique({
+      where: { token: dto.invitationToken },
+    });
+    if (!invitation) throw new NotFoundException('INVITATION_NOT_FOUND');
+
+    // Validación estructural: la invitación debe ser de tipo Parent.
+    const parentRole = await this.prisma.role.findUnique({
+      where: { name: 'parent' },
+      select: { id: true },
+    });
+    if (!parentRole || invitation.roleId !== parentRole.id || !invitation.parentId) {
+      throw new BadRequestException('INVITATION_INVALID_ROLE');
+    }
+
+    const parentRecord = await this.prisma.parent.findUnique({ where: { id: invitation.parentId } });
+    if (!parentRecord || parentRecord.schoolId !== invitation.schoolId) {
+      throw new BadRequestException('INVITATION_INVALID_ROLE');
+    }
+
+    // 3. Buscar el usuario por googleSub (fuente de verdad del token validado).
     const existing = await this.prisma.user.findUnique({
       where: { googleSub: payload.sub },
       select: {
@@ -142,61 +173,141 @@ export class AuthService {
         needsPasswordChange: true, isActive: true, deletedAt: true,
       },
     });
+    if (existing && (!existing.isActive || existing.deletedAt)) {
+      throw new UnauthorizedException('La cuenta está inactiva o ha sido eliminada');
+    }
 
-    let user;
-    if (existing) {
-      // Cuenta Google ya registrada.
-      if (!existing.isActive || existing.deletedAt) {
-        throw new UnauthorizedException('La cuenta está inactiva o ha sido eliminada');
+    let user = existing;
+
+    // 4. Ramificación por el estado de Parent.userId — Casos A/B/C.
+    if (parentRecord.userId !== null) {
+      if (existing && parentRecord.userId === existing.id) {
+        user = existing;
+      } else {
+        // Caso C — vinculado a otro usuario. Rechazar siempre, sin excepción.
+        throw new ConflictException('INVITATION_ALREADY_USED');
       }
-      user = existing;
     } else {
-      // 3. Cuenta nueva: crear el User con los datos del token validado.
-      //    passwordHash = hash de una cadena aleatoria → login por password imposible.
-      const randomPassword = crypto.randomBytes(32).toString('hex');
-      const passwordHash = await bcrypt.hash(randomPassword, 10);
+      if (invitation.usedAt) throw new ConflictException('INVITATION_ALREADY_USED');
+      if (invitation.expiresAt < new Date()) throw new BadRequestException('INVITATION_EXPIRED');
 
-      // Buscar el rol 'parent' (dato de referencia).
-      const parentRole = await this.prisma.role.findUnique({
-        where: { name: 'parent' },
-        select: { id: true },
-      });
-      if (!parentRole) {
-        throw new UnauthorizedException('El rol de padre no está configurado');
+      // Regla de identidad del padre: email obligatorio, coincidencia exacta
+      // normalizada. Nunca se permite elegir qué Parent reclamar.
+      if (!invitation.email) {
+        throw new BadRequestException('INVITATION_INVALID_ROLE');
+      }
+      if (invitation.email.trim().toLowerCase() !== googleEmail) {
+        throw new UnauthorizedException('INVITATION_EMAIL_MISMATCH');
       }
 
-      // Crear usuario + rol parent (schoolId null: sin vinculación institucional en Fase 1).
-      try {
-        user = await this.prisma.$transaction(async (tx) => {
-          const created = await tx.user.create({
-            data: {
-              email: payload.email,
-              passwordHash,
-              firstName: payload.given_name ?? '',
-              lastName: payload.family_name ?? '',
-              avatar: payload.picture ?? null,
-              googleSub: payload.sub,
-              isActive: true,
+      let precomputedPasswordHash: string | undefined;
+      if (!user) {
+        const randomPassword = crypto.randomBytes(32).toString('hex');
+        precomputedPasswordHash = await bcrypt.hash(randomPassword, 10);
+      }
+
+      const runLinkingTransaction = async (knownUser: typeof user) => {
+        return this.prisma.$transaction(async (tx) => {
+          let txUser = knownUser;
+          if (!txUser) {
+            txUser = await tx.user.create({
+              data: {
+                email: googleEmail,
+                passwordHash: precomputedPasswordHash!,
+                firstName: payload.given_name ?? '',
+                lastName: payload.family_name ?? '',
+                avatar: payload.picture ?? null,
+                googleSub: payload.sub,
+                isActive: true,
+              },
+            });
+          }
+
+          await tx.userRole.upsert({
+            where: {
+              userId_roleId_schoolId: {
+                userId: txUser.id,
+                roleId: invitation.roleId,
+                schoolId: invitation.schoolId,
+              },
             },
+            create: { userId: txUser.id, roleId: invitation.roleId, schoolId: invitation.schoolId },
+            update: {},
           });
 
-          await tx.userRole.create({
-            data: { userId: created.id, roleId: parentRole.id, schoolId: null },
+          const linked = await tx.parent.updateMany({
+            where: { id: invitation.parentId!, userId: null },
+            data: { userId: txUser.id, linkStatus: 'linked' },
           });
+          if (linked.count === 0) {
+            const current = await tx.parent.findUnique({
+              where: { id: invitation.parentId! },
+              select: { userId: true },
+            });
+            if (current?.userId !== txUser.id) {
+              throw new ConflictException('INVITATION_ALREADY_USED');
+            }
+            // Ganamos nosotros mismos en la petición gemela — continuar.
+          }
 
-          return created;
+          const parentStudents = await tx.parentStudent.findMany({
+            where: { parentId: invitation.parentId! },
+            select: { studentId: true, relationship: true, isPrimary: true },
+          });
+          if (parentStudents.length > 0) {
+            await tx.userStudent.createMany({
+              data: parentStudents.map((ps) => ({
+                userId: txUser!.id,
+                studentId: ps.studentId,
+                relationship: ps.relationship,
+                isPrimary: ps.isPrimary,
+              })),
+              skipDuplicates: true,
+            });
+          }
+
+          const claimed = await tx.schoolInvitation.updateMany({
+            where: { id: invitation.id, usedAt: null },
+            data: { usedAt: new Date() },
+          });
+          if (claimed.count === 0) {
+            const currentInv = await tx.schoolInvitation.findUnique({
+              where: { id: invitation.id },
+              select: { usedAt: true },
+            });
+            if (!currentInv?.usedAt) {
+              throw new ConflictException('INVITATION_ALREADY_USED');
+            }
+            // Idempotente — la petición gemela ya la consumió, no relanzar.
+          }
+
+          return txUser;
         });
+      };
+
+      try {
+        user = await runLinkingTransaction(user);
       } catch (err: any) {
-        if (err?.code === 'P2002') {
-          throw new ConflictException(
-            'Ya existe una cuenta con este correo. Inicia sesión con tu correo y contraseña.',
-          );
+        if (err?.code === 'P2002' && !user) {
+          const raceWinner = await this.prisma.user.findUnique({ where: { googleSub: payload.sub } });
+          if (raceWinner) {
+            user = await runLinkingTransaction(raceWinner);
+          } else {
+            throw new ConflictException(
+              'Ya existe una cuenta con este correo. Inicia sesión con tu correo y contraseña.',
+            );
+          }
+        } else {
+          throw err;
         }
-        throw err;
       }
     }
 
-    // 4. Cargar roles + students (mismo mecanismo que login).
+    if (!user) {
+      throw new UnauthorizedException('No se pudo resolver la cuenta de usuario');
+    }
+
+    // 6. Cargar roles + students (mismo mecanismo que login).
     const [rolesData, studentsData] = await Promise.all([
       this._loadRolesForLogin(user.id),
       this._loadStudentsForLogin(user.id),
@@ -207,7 +318,7 @@ export class AuthService {
       .filter((n): n is string => n !== null && n !== undefined);
     const schoolId = rolesData[0]?.schoolId ?? null;
 
-    // 5. Generar tokens + guardar push token (en paralelo, igual que login).
+    // 7. Generar tokens + guardar push token (en paralelo, igual que login).
     const [tokens] = await Promise.all([
       this.generateTokens(user, roles, schoolId),
       (async () => {
@@ -221,7 +332,7 @@ export class AuthService {
       })(),
     ]);
 
-    // 6. Cargar hijos si es padre (misma estructura que login).
+    // 8. Cargar hijos si es padre (misma estructura que login).
     const isParent = rolesData.some((r) => r.roleName === 'parent');
     let children: {
       id: string; firstName: string; lastName: string; code: string;
@@ -239,7 +350,7 @@ export class AuthService {
       }));
     }
 
-    // 7. Devolver la misma estructura de respuesta que login.
+    // 9. Devolver la misma estructura de respuesta que login.
     return {
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
@@ -290,9 +401,16 @@ export class AuthService {
   }
 
   // ── LOGOUT ─────────────────────────────────────────────
-  async logout(userId: bigint, firebaseToken?: string) {
+  async logout(userId: bigint, firebaseToken?: string, refreshToken?: string) {
     if (firebaseToken) {
       await this.prisma.pushToken.deleteMany({ where: { userId, token: firebaseToken } });
+    }
+    if (refreshToken) {
+      await this.prisma.userToken.deleteMany({
+        where: { userId, tokenType: 'refresh', token: refreshToken },
+      });
+    } else {
+      await this.prisma.userToken.deleteMany({ where: { userId, tokenType: 'refresh' } });
     }
     return { message: 'Sesión cerrada correctamente' };
   }
@@ -307,6 +425,12 @@ export class AuthService {
     if (!inv) throw new NotFoundException('Invitación no encontrada');
     if (inv.usedAt) throw new ConflictException('Esta invitación ya fue utilizada');
     if (inv.expiresAt < new Date()) throw new BadRequestException('Esta invitación ha expirado');
+    if (inv.parentId) {
+      throw new BadRequestException('Esta invitación requiere iniciar sesión con Google');
+    }
+    if (!inv.email) {
+      throw new BadRequestException('Esta invitación no tiene un email asociado');
+    }
 
     const existing = await this.prisma.user.findFirst({
       where: { email: inv.email, deletedAt: null },
@@ -348,10 +472,13 @@ export class AuthService {
         });
       }
 
-      await tx.schoolInvitation.update({
-        where: { id: inv.id },
+      const claimed = await tx.schoolInvitation.updateMany({
+        where: { id: inv.id, usedAt: null },
         data: { usedAt: new Date() },
       });
+      if (claimed.count === 0) {
+        throw new ConflictException('Esta invitación ya fue utilizada');
+      }
 
       return user;
     });
@@ -405,6 +532,14 @@ export class AuthService {
       where: { token: refreshToken, tokenType: 'refresh' },
     });
     if (!stored) throw new UnauthorizedException('Sesión cerrada. Inicia sesión nuevamente');
+
+    const user = await this.prisma.user.findFirst({
+      where: { id: BigInt(payload.sub), isActive: true, deletedAt: null },
+      select: { id: true },
+    });
+    if (!user) {
+      throw new UnauthorizedException('Usuario no encontrado o inactivo');
+    }
 
     const newAccessToken = this.jwtService.sign(
       {

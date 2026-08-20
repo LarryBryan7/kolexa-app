@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Delete, Body, Param, Query, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Param, ParseIntPipe } from '@nestjs/common';
 import { IsString, IsInt, IsPositive, IsOptional, IsBoolean } from 'class-validator';
 import { AnecdotesService } from './anecdotes.service';
 import { CurrentUser, UserPayload } from '../../common/decorators/current-user.decorator';
@@ -25,9 +25,8 @@ export class AnecdotesController {
   getForStudent(
     @Param('studentId', ParseIntPipe) studentId: number,
     @CurrentUser() user: UserPayload,
-    @Query('role') role: 'teacher' | 'parent' = 'parent',
   ) {
-    return this.service.getForStudent(studentId, user.sub, role === 'teacher');
+    return this.service.getForStudent(studentId, user.sub, user.roles.includes('teacher'));
   }
 
   @Delete(':id')

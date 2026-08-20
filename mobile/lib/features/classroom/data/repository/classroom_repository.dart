@@ -46,8 +46,8 @@ class ClassroomRepository {
     return UpcomingStatus.fromJson(data);
   }
 
-  Future<TodaySummary> getParentTodaySummary() async {
-    final res = await _api.get('classroom/parent/today-summary');
+  Future<TodaySummary> getParentTodaySummary(String studentId) async {
+    final res = await _api.get('classroom/parent/today-summary?studentId=$studentId');
     return TodaySummary.fromJson(res.data as Map<String, dynamic>);
   }
 

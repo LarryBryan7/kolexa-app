@@ -27,14 +27,15 @@ export class HttpExceptionFilter implements ExceptionFilter {
         ? exception.getStatus()
         : HttpStatus.INTERNAL_SERVER_ERROR;
 
-    // Extraer el mensaje de error
     let message: string | string[];
+    let code: string | undefined;
     if (exception instanceof HttpException) {
       const exceptionResponse = exception.getResponse();
       // NestJS puede devolver { message: string[] } (validación)
       // o simplemente { message: string }
       if (typeof exceptionResponse === 'object' && exceptionResponse !== null) {
         message = (exceptionResponse as any).message ?? exception.message;
+        code = (exceptionResponse as any).code;
       } else {
         message = exception.message;
       }
@@ -50,6 +51,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     response.status(status).json({
       success: false,
       statusCode: status,
+      ...(code ? { code } : {}),
       message,
       timestamp: new Date().toISOString(),
       path: request.url,

@@ -10,7 +10,7 @@ class GoogleSignInService {
 
   // ── Configuración del Client ID ───────────────────────────
   static const String _serverClientId =
-      'TU_SERVER_CLIENT_ID.apps.googleusercontent.com';
+      '171691080214-1t7108i5q0997upk7l6n7tq2ssr3a7r3.apps.googleusercontent.com';
 
   final GoogleSignIn _googleSignIn = GoogleSignIn(
     serverClientId: _serverClientId,

@@ -143,14 +143,18 @@ class ApiClient {
 
       case DioExceptionType.badResponse:
         final statusCode = e.response?.statusCode;
-        final message = e.response?.data?['message'] ?? 'Error del servidor';
+        final data = e.response?.data;
+        final message = (data is Map ? data['message'] : null) ?? 'Error del servidor';
         final messageStr = message is List ? message.join(', ') : message.toString();
         if (statusCode == 401) {
-          // Si el mensaje viene del servidor úsalo directo (ej: "Credenciales incorrectas").
-          // Solo mostramos "Sesión expirada" cuando es un token inválido.
-          final isTokenError = messageStr.toLowerCase().contains('token');
-          if (isTokenError) {
+          final code = data is Map ? data['code'] as String? : null;
+          if (code == 'SESSION_TOKEN_EXPIRED') {
             return Exception('Sesión expirada. Por favor inicia sesión de nuevo.');
+          }
+          if (code == 'GOOGLE_TOKEN_EXPIRED') {
+            return Exception(
+              'La conexión con Google Classroom expiró. Vuelve a conectarla desde el colegio.',
+            );
           }
           return Exception(messageStr);
         }

@@ -1,9 +1,10 @@
 // login.dto.ts — Data Transfer Object para el login
 
 import { IsEmail, IsString, MinLength, IsOptional } from 'class-validator';
+import { NormalizeEmail } from '../../../common/decorators/normalize-email.decorator';
 
 export class LoginDto {
-  // @IsEmail() verifica que sea un email válido con formato correcto
+  @NormalizeEmail()
   @IsEmail({}, { message: 'El email no tiene un formato válido' })
   email: string;
 

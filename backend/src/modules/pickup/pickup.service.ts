@@ -7,6 +7,29 @@ import { PrismaService } from '../../prisma/prisma.service';
 export class PickupService {
   constructor(private readonly prisma: PrismaService) {}
 
+  // ── assertParentOrStaffAccess ─────────────────────────────
+  private async assertParentOrStaffAccess(userId: bigint, studentId: number): Promise<void> {
+    const student = await this.prisma.student.findUnique({
+      where: { id: studentId },
+      select: { schoolId: true },
+    });
+    if (!student) throw new NotFoundException('Alumno no encontrado');
+
+    const isParent = await this.prisma.userStudent.findFirst({
+      where: { userId, studentId },
+      select: { id: true },
+    });
+    if (isParent) return;
+
+    const isStaff = await this.prisma.userRole.findFirst({
+      where: { userId, schoolId: student.schoolId },
+      select: { id: true },
+    });
+    if (isStaff) return;
+
+    throw new ForbiddenException('No tienes acceso a este alumno');
+  }
+
   // ── addAuthorizedPerson ───────────────────────────────────
   // El padre agrega una persona autorizada para recoger a su hijo.
   async addAuthorizedPerson(
@@ -41,15 +64,8 @@ export class PickupService {
   }
 
   // ── getAuthorizedList ─────────────────────────────────────
-  // Lista de personas autorizadas para recoger a un alumno.
-  // La ve el portero/secretaria cuando alguien llega al colegio.
   async getAuthorizedList(studentId: number, requesterId: bigint) {
-    // Verificar acceso (padre del alumno o personal del colegio)
-    const parentRel = await this.prisma.userStudent.findFirst({
-      where: { userId: requesterId, studentId },
-    });
-    // Si no es padre, verificamos que sea personal del colegio (simplificado)
-    // En producción, verificar roles con más granularidad
+    await this.assertParentOrStaffAccess(requesterId, studentId);
 
     return this.prisma.authorizedPickup.findMany({
       where: { studentId, isActive: true },
@@ -75,8 +91,6 @@ export class PickupService {
   }
 
   // ── logPickupEvent ────────────────────────────────────────
-  // El portero/secretaria registra que el alumno fue recogido.
-  // Esto genera una notificación push al padre.
   async logPickupEvent(
     data: {
       studentId: number;
@@ -87,6 +101,8 @@ export class PickupService {
     },
     staffId: bigint,
   ) {
+    await this.assertParentOrStaffAccess(staffId, data.studentId);
+
     const event = await this.prisma.pickupEvent.create({
       data: {
         studentId: data.studentId,

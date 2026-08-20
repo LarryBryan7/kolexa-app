@@ -29,13 +29,14 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     return super.canActivate(context);
   }
 
-  // handleRequest se llama después de que passport valida el token.
-  // Si hay error o no hay usuario → lanzamos 401
   handleRequest(err: any, user: any) {
     if (err || !user) {
-      throw new UnauthorizedException(
-        'Token inválido o expirado. Por favor inicia sesión nuevamente.',
-      );
+      throw new UnauthorizedException({
+        statusCode: 401,
+        code: 'SESSION_TOKEN_EXPIRED',
+        message: 'Token inválido o expirado. Por favor inicia sesión nuevamente.',
+        error: 'Unauthorized',
+      });
     }
     return user; // el usuario queda disponible en request.user
   }

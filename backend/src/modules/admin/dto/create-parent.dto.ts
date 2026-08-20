@@ -1,4 +1,5 @@
 import { IsEmail, IsOptional, IsString, MaxLength } from 'class-validator';
+import { NormalizeEmail } from '../../../common/decorators/normalize-email.decorator';
 
 export class CreateParentDto {
   @IsString()
@@ -21,6 +22,7 @@ export class CreateParentDto {
   phone?: string;
 
   @IsOptional()
+  @NormalizeEmail()
   @IsEmail()
   @MaxLength(128)
   email?: string;

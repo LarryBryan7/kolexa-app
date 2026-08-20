@@ -7,6 +7,22 @@ import { PrismaService } from '../../prisma/prisma.service';
 export class AnecdotesService {
   constructor(private readonly prisma: PrismaService) {}
 
+  // ── isTeacherOfStudent ────────────────────────────────────
+  private async isTeacherOfStudent(teacherId: bigint, studentId: number): Promise<boolean> {
+    const currentYear = new Date().getFullYear();
+    const enrollment = await this.prisma.studentEnrollment.findFirst({
+      where: { studentId, academicYear: currentYear, isActive: true },
+      select: { classroomId: true },
+    });
+    if (!enrollment) return false;
+
+    const teaches = await this.prisma.classroomCourse.findFirst({
+      where: { classroomId: enrollment.classroomId, teacherId },
+      select: { id: true },
+    });
+    return !!teaches;
+  }
+
   // ── create ────────────────────────────────────────────────
   async create(
     data: {
@@ -23,6 +39,11 @@ export class AnecdotesService {
       where: { id: data.studentId, deletedAt: null },
     });
     if (!student) throw new NotFoundException('Alumno no encontrado');
+
+    const authorized = await this.isTeacherOfStudent(teacherId, data.studentId);
+    if (!authorized) {
+      throw new ForbiddenException('No dictas clases a este alumno');
+    }
 
     return this.prisma.anecdote.create({
       data: {
@@ -42,9 +63,19 @@ export class AnecdotesService {
   }
 
   // ── getForStudent ─────────────────────────────────────────
-  // Anécdotas de un alumno (el padre ve las no privadas).
   async getForStudent(studentId: number, requesterId: bigint, isTeacher: boolean) {
-    if (!isTeacher) {
+    const student = await this.prisma.student.findUnique({
+      where: { id: studentId },
+      select: { id: true },
+    });
+    if (!student) throw new NotFoundException('Alumno no encontrado');
+
+    if (isTeacher) {
+      const authorized = await this.isTeacherOfStudent(requesterId, studentId);
+      if (!authorized) {
+        throw new ForbiddenException('No tienes acceso a las anécdotas de este alumno');
+      }
+    } else {
       // Verificar que es el padre del alumno
       const rel = await this.prisma.userStudent.findFirst({
         where: { userId: requesterId, studentId },

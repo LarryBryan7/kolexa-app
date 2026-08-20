@@ -2,6 +2,7 @@ import { Controller, Get, Post, Body, Param, ParseIntPipe } from '@nestjs/common
 import { IsString, IsInt, IsPositive, IsOptional, IsArray, IsNumber } from 'class-validator';
 import { PaymentsService } from './payments.service';
 import { CurrentUser, UserPayload } from '../../common/decorators/current-user.decorator';
+import { Roles } from '../../common/decorators/roles.decorator';
 
 class CreateConceptDto {
   @IsString() name: string;
@@ -35,6 +36,7 @@ export class PaymentsController {
   }
 
   @Post('concepts')
+  @Roles('school_admin')
   createConcept(@Body() dto: CreateConceptDto, @CurrentUser() user: UserPayload) {
     return this.service.createConcept(
       { ...dto, schoolId: user.schoolId ?? BigInt(0) },
@@ -43,13 +45,15 @@ export class PaymentsController {
   }
 
   @Post('obligations')
+  @Roles('school_admin')
   assignObligations(@Body() dto: AssignObligationsDto, @CurrentUser() user: UserPayload) {
-    return this.service.assignObligations(dto, user.sub);
+    return this.service.assignObligations(dto, user.schoolId ?? BigInt(0), user.sub);
   }
 
   @Post('record')
+  @Roles('school_admin')
   recordPayment(@Body() dto: RecordPaymentDto, @CurrentUser() user: UserPayload) {
-    return this.service.recordPayment(dto, user.sub);
+    return this.service.recordPayment(dto, user.schoolId ?? BigInt(0), user.sub);
   }
 
   @Get('student/:studentId')

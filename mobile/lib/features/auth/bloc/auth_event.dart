@@ -28,10 +28,12 @@ final class LoginEvent extends AuthEvent {
 // ── GoogleLoginEvent ──────────────────────────────────────
 final class GoogleLoginEvent extends AuthEvent {
   final String idToken;
+  final String invitationToken;
   final String? firebaseToken; // para registrar el dispositivo en FCM
 
   const GoogleLoginEvent({
     required this.idToken,
+    required this.invitationToken,
     this.firebaseToken,
   });
 

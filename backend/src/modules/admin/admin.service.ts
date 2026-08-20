@@ -578,7 +578,8 @@ export class AdminService {
   }
 
   async createParentStudentLink(schoolId: bigint, dto: CreateParentStudentLinkDto) {
-    // Verificar que el padre pertenezca al colegio
+    // Verificar que el padre pertenezca al colegio (solo existencia/
+    // ownership — el userId de este objeto NO se usa para el bridge).
     await this.getParentOwned(schoolId, BigInt(dto.parentId));
     // Verificar que el alumno pertenezca al colegio
     await this.getStudentOwned(schoolId, BigInt(dto.studentId));
@@ -595,13 +596,36 @@ export class AdminService {
       throw new ConflictException('El padre ya está vinculado a este alumno');
     }
 
-    return this.prisma.parentStudent.create({
-      data: {
-        parentId: BigInt(dto.parentId),
-        studentId: BigInt(dto.studentId),
-        relationship: dto.relationship,
-        isPrimary: dto.isPrimary ?? false,
-      },
+    return this.prisma.$transaction(async (tx) => {
+      const link = await tx.parentStudent.create({
+        data: {
+          parentId: BigInt(dto.parentId),
+          studentId: BigInt(dto.studentId),
+          relationship: dto.relationship,
+          isPrimary: dto.isPrimary ?? false,
+        },
+      });
+
+      const freshParent = await tx.parent.findUnique({
+        where: { id: BigInt(dto.parentId) },
+        select: { userId: true },
+      });
+      if (freshParent?.userId != null) {
+        await tx.userStudent.upsert({
+          where: {
+            userId_studentId: { userId: freshParent.userId, studentId: BigInt(dto.studentId) },
+          },
+          create: {
+            userId: freshParent.userId,
+            studentId: BigInt(dto.studentId),
+            relationship: dto.relationship,
+            isPrimary: dto.isPrimary ?? false,
+          },
+          update: {},
+        });
+      }
+
+      return link;
     });
   }
 
@@ -615,10 +639,22 @@ export class AdminService {
           { student: { schoolId } },
         ],
       },
-      select: { id: true },
+      select: { id: true, parentId: true, studentId: true },
     });
     if (!link) throw new NotFoundException('Vínculo no encontrado');
-    return this.prisma.parentStudent.delete({ where: { id } });
+
+    return this.prisma.$transaction(async (tx) => {
+      const freshParent = await tx.parent.findUnique({
+        where: { id: link.parentId },
+        select: { userId: true },
+      });
+      if (freshParent?.userId != null) {
+        await tx.userStudent.deleteMany({
+          where: { userId: freshParent.userId, studentId: link.studentId },
+        });
+      }
+      return tx.parentStudent.delete({ where: { id } });
+    });
   }
 
   // ASIGNACIÓN DOCENTE–CURSO–AULA

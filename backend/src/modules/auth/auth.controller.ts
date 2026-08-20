@@ -8,6 +8,7 @@ import {
   HttpStatus,
   BadRequestException,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
@@ -25,6 +26,7 @@ export class AuthController {
 
   // ── POST /api/v1/auth/login ────────────────────────────
   @Public()
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('login')
   @HttpCode(HttpStatus.OK)
   login(@Body() dto: LoginDto) {
@@ -35,6 +37,7 @@ export class AuthController {
 
   // ── POST /api/v1/auth/refresh ──────────────────────────
   @Public()
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   refresh(@Body('refreshToken') refreshToken: string) {
@@ -53,6 +56,7 @@ export class AuthController {
 
   // ── POST /api/v1/auth/google ───────────────────────────
   @Public()
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('google')
   @HttpCode(HttpStatus.OK)
   googleLogin(@Body() dto: GoogleLoginDto) {
@@ -65,8 +69,9 @@ export class AuthController {
   logout(
     @CurrentUser() user: UserPayload,
     @Body('firebaseToken') firebaseToken?: string,
+    @Body('refreshToken') refreshToken?: string,
   ) {
-    return this.authService.logout(BigInt(user.sub), firebaseToken);
+    return this.authService.logout(BigInt(user.sub), firebaseToken, refreshToken);
   }
 
   // ── POST /api/v1/auth/change-password ─────────────────

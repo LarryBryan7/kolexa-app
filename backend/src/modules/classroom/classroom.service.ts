@@ -123,6 +123,16 @@ export class ClassroomService {
     return { type: 'student', id: String(parsed.studentId) };
   }
 
+  async assertStudentOwnedByParent(userId: bigint, studentId: bigint): Promise<void> {
+    const rel = await this.prisma.userStudent.findFirst({
+      where: { userId, studentId },
+      select: { id: true },
+    });
+    if (!rel) {
+      throw new ForbiddenException('No tienes acceso a este alumno');
+    }
+  }
+
   // ── Verifica si el docente tiene cuenta conectada ────────
   async isTeacherConnected(userId: bigint): Promise<boolean> {
     const token = await this.prisma.teacherGoogleToken.findUnique({ where: { userId } });
@@ -489,8 +499,7 @@ export class ClassroomService {
     });
   }
 
-  // ── Retorna el roster de alumnos desde la BD (sincronizado en sync) ─
-  async getParentTodaySummary() {
+  async getParentTodaySummary(studentId: bigint) {
     // Todo en hora Lima (UTC-5) para que coincida con los horarios guardados
     const LIMA_OFFSET_MS = 5 * 60 * 60 * 1000;
     const nowLima = new Date(Date.now() - LIMA_OFFSET_MS);
@@ -498,18 +507,30 @@ export class ClassroomService {
     const todayStr = nowLima.toISOString().split('T')[0];
     const todayDate = new Date(todayStr);
 
-    const session = await this.prisma.gcAttendanceSession.findFirst({
-      where: { date: todayDate },
-      orderBy: { createdAt: 'desc' },
-      include: { records: { select: { status: true } } },
+    const gcCourseStudents = await this.prisma.gcCourseStudent.findMany({
+      where: { studentId },
+      select: { id: true },
     });
+
+    const record = gcCourseStudents.length > 0
+      ? await this.prisma.gcAttendanceRecord.findFirst({
+          where: {
+            studentId: { in: gcCourseStudents.map((s) => s.id) },
+            session: { date: todayDate },
+          },
+          include: { session: true },
+          orderBy: { session: { createdAt: 'desc' } },
+        })
+      : null;
+
+    const session = record?.session ?? null;
 
     const storedPhotoPaths: string[] = session && Array.isArray(session.photoUrls)
       ? (session.photoUrls as string[])
       : [];
     const photoUrls = await this.storage.getSignedUrls(storedPhotoPaths);
     const photoCount = storedPhotoPaths.length;
-    const arrivalStatus: string | null = session?.records[0]?.status ?? null;
+    const arrivalStatus: string | null = record?.status ?? null;
 
     let arrivalTime: string | null = null;
     if (session) {
