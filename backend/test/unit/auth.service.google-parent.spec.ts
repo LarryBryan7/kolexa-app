@@ -91,10 +91,11 @@ describe('AuthService.loginWithGoogle — flujo de Parent con invitación', () =
       schoolInvitation: { updateMany: jest.fn(), findUnique: jest.fn() },
     };
 
+    const schoolInvitationFind = jest.fn();
     prisma = {
       user: { findUnique: jest.fn() },
       role: { findUnique: jest.fn().mockResolvedValue({ id: PARENT_ROLE_ID }) },
-      schoolInvitation: { findUnique: jest.fn() },
+      schoolInvitation: { findUnique: schoolInvitationFind, findFirst: schoolInvitationFind },
       parent: { findUnique: jest.fn(), findFirst: jest.fn().mockResolvedValue(null) },
       userRole: { findFirst: jest.fn().mockResolvedValue(null) },
       $transaction: jest.fn(async (cb: any) => {
@@ -534,7 +535,11 @@ describe('AuthService.loginWithGoogle — invitación GENÉRICA (docente/directo
           return Promise.resolve(null);
         }),
       },
-      schoolInvitation: { findUnique: jest.fn().mockResolvedValue(genericInvitation) },
+      // findFirst alias de findUnique — ver comentario equivalente arriba.
+      schoolInvitation: (() => {
+        const find = jest.fn().mockResolvedValue(genericInvitation);
+        return { findUnique: find, findFirst: find };
+      })(),
       parent: { findFirst: jest.fn().mockResolvedValue(null) },
       userRole: { findFirst: jest.fn().mockResolvedValue(null) },
       $transaction: jest.fn(async (cb: any) => cb(txMock)),

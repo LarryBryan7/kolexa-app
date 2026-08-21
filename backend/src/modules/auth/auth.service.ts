@@ -177,8 +177,8 @@ export class AuthService {
       throw new UnauthorizedException('INVITATION_REQUIRED');
     }
 
-    const invitation = await this.prisma.schoolInvitation.findUnique({
-      where: { token: dto.invitationToken },
+    const invitation = await this.prisma.schoolInvitation.findFirst({
+      where: { OR: [{ token: dto.invitationToken }, { shortCode: dto.invitationToken }] },
     });
     if (!invitation) throw new NotFoundException('INVITATION_NOT_FOUND');
 
