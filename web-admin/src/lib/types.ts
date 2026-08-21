@@ -70,6 +70,7 @@ export interface User {
   phone?: string | null;
   isActive: boolean;
   needsPasswordChange: boolean;
+  googleSub?: string | null;
   userRoles?: {
     role: { name: string };
   }[];
