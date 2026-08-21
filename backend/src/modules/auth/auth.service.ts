@@ -234,17 +234,35 @@ export class AuthService {
         return this.prisma.$transaction(async (tx) => {
           let txUser = knownUser;
           if (!txUser) {
-            txUser = await tx.user.create({
-              data: {
-                email: googleEmail,
-                passwordHash: precomputedPasswordHash!,
-                firstName: payload.given_name ?? '',
-                lastName: payload.family_name ?? '',
-                avatar: payload.picture ?? null,
-                googleSub: payload.sub,
-                isActive: true,
-              },
-            });
+            const byEmail = await tx.user.findUnique({ where: { email: googleEmail } });
+            if (byEmail) {
+              if (byEmail.deletedAt || !byEmail.isActive) {
+                throw new UnauthorizedException('La cuenta está inactiva o ha sido eliminada');
+              }
+              if (byEmail.googleSub && byEmail.googleSub !== payload.sub) {
+                // Ya vinculada a OTRA cuenta de Google — no se puede
+                // reclamar silenciosamente (fuera de alcance: unir cuentas).
+                throw new ConflictException(
+                  'Este correo ya está vinculado a otra cuenta de Google.',
+                );
+              }
+              txUser = await tx.user.update({
+                where: { id: byEmail.id },
+                data: { googleSub: payload.sub, isActive: true },
+              });
+            } else {
+              txUser = await tx.user.create({
+                data: {
+                  email: googleEmail,
+                  passwordHash: precomputedPasswordHash!,
+                  firstName: payload.given_name ?? '',
+                  lastName: payload.family_name ?? '',
+                  avatar: payload.picture ?? null,
+                  googleSub: payload.sub,
+                  isActive: true,
+                },
+              });
+            }
           }
 
           await tx.userRole.upsert({
