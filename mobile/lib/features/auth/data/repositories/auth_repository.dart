@@ -48,8 +48,8 @@ class AuthRepository {
     );
 
     await _saveSession(loginResponse.accessToken, loginResponse.refreshToken, loginResponse.user);
-    await OnboardingService.instance.markGoogleParentLinked();
-    await OnboardingService.instance.saveLastParentProfile(
+    await OnboardingService.instance.markGoogleLinked();
+    await OnboardingService.instance.saveLastLoginProfile(
       firstName: loginResponse.user.firstName,
       lastName: loginResponse.user.lastName,
       avatar: loginResponse.user.avatar,

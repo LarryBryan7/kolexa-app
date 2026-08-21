@@ -9,11 +9,8 @@ import '../../features/auth/ui/login_page.dart';
 import '../../features/home/ui/home_v2_page.dart';
 import '../../features/home/ui/home_docente_page.dart';
 import '../../features/home/ui/home_director_page.dart';
-import '../../features/onboarding/ui/welcome_page.dart';
-import '../../features/onboarding/ui/role_selection_page.dart';
 import '../../features/onboarding/ui/hijos_encontrados_page.dart';
 import '../../features/auth/data/models/user_model.dart';
-import '../services/onboarding_service.dart';
 import '../../features/classroom/ui/classroom_page.dart';
 import '../../features/classroom/bloc/classroom_bloc.dart';
 import '../../features/home/ui/esta_semana_page.dart';
@@ -36,15 +33,14 @@ CustomTransitionPage<void> _fadePage(GoRouterState state, Widget child) {
 // ── AppRouter ─────────────────────────────────────────────
 class AppRouter {
   // Rutas como constantes para evitar strings duplicados
-  static const String welcome = '/welcome';
-  static const String roleSelection = '/role-selection';
   static const String login = '/login';
   static const String hijosEncontrados = '/hijos-encontrados';
   static const String home = '/home';
   static const String classroom = '/classroom';
   static const String estaSemana = '/esta-semana';
 
-  static const Set<String> _publicFlow = {welcome, roleSelection, login};
+  // Rutas del flujo público (sin sesión).
+  static const Set<String> _publicFlow = {login};
 
   // Instancia del GoRouter — se crea una sola vez
   // 'late final' significa: inicialización diferida, no cambia después
@@ -59,10 +55,8 @@ class AppRouter {
     // que go_router puede escuchar para re-evaluar las redirecciones
     final refreshStream = _GoRouterRefreshStream(authBloc.stream);
 
-    final initialLocation = OnboardingService.instance.isCompleted ? login : welcome;
-
     _router = GoRouter(
-      initialLocation: initialLocation,
+      initialLocation: login,
 
       refreshListenable: refreshStream,
 
@@ -94,20 +88,8 @@ class AppRouter {
 
       routes: [
         GoRoute(
-          path: welcome,
-          pageBuilder: (_, state) => _fadePage(state, const WelcomePage()),
-        ),
-        GoRoute(
-          path: roleSelection,
-          pageBuilder: (_, state) => _fadePage(state, const RoleSelectionPage()),
-        ),
-        GoRoute(
           path: login,
-          pageBuilder: (_, state) {
-            final extra = state.extra as Map<String, dynamic>?;
-            final role = extra?['role'] as String? ?? OnboardingService.instance.selectedRole;
-            return _fadePage(state, LoginPage(role: role));
-          },
+          pageBuilder: (_, state) => _fadePage(state, const LoginPage()),
         ),
         GoRoute(
           path: hijosEncontrados,
