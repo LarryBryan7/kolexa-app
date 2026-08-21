@@ -16,7 +16,6 @@ jest.mock('google-auth-library', () => ({
   OAuth2Client: jest.fn().mockImplementation(() => ({ verifyIdToken: mockVerifyIdToken })),
 }));
 
-const PARENT_ROLE_ID = 3;
 const ITERATIONS = 20;
 
 describe('IM-8 — race createParentStudentLink() vs. primer login de Google (Postgres real)', () => {
@@ -77,7 +76,7 @@ describe('IM-8 — race createParentStudentLink() vs. primer login de Google (Po
         data: { schoolId, firstName: 'Hijo', lastName: `Race${i}`, code: `IM8-STU-${i}-${Date.now().toString(36)}` },
       });
       const invitation = await invitationsService.create(
-        { schoolId, email, roleId: PARENT_ROLE_ID, parentId: parent.id },
+        { schoolId, email, parentId: parent.id },
         1n,
       );
 

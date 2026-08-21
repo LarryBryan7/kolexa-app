@@ -10,7 +10,6 @@ describe('InvitationsService.findActiveForParent — aislamiento entre colegios 
   let invitationsService: InvitationsService;
   let schoolA: bigint;
   let schoolB: bigint;
-  const PARENT_ROLE_ID = 3;
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
@@ -43,7 +42,7 @@ describe('InvitationsService.findActiveForParent — aislamiento entre colegios 
       },
     });
     await invitationsService.create(
-      { schoolId: schoolB, email: parentB.email!, roleId: PARENT_ROLE_ID, parentId: parentB.id },
+      { schoolId: schoolB, email: parentB.email!, parentId: parentB.id },
       1n,
     );
 
@@ -62,7 +61,7 @@ describe('InvitationsService.findActiveForParent — aislamiento entre colegios 
       },
     });
     const created = await invitationsService.create(
-      { schoolId: schoolA, email: parentA.email!, roleId: PARENT_ROLE_ID, parentId: parentA.id },
+      { schoolId: schoolA, email: parentA.email!, parentId: parentA.id },
       1n,
     );
 

@@ -33,8 +33,8 @@ export class CreateUserDto {
   @MaxLength(20)
   phone?: string;
 
-  // Rol del usuario dentro del colegio: 'teacher' (docente) o 'parent' (padre).
-  // El rol 'school_admin' no se asigna desde aquí.
-  @IsIn(['teacher', 'parent'], { message: 'Rol inválido. Debe ser teacher o parent' })
-  role: 'teacher' | 'parent';
+  @IsIn(['teacher', 'parent', 'school_admin'], {
+    message: 'Rol inválido. Debe ser teacher, parent o school_admin',
+  })
+  role: 'teacher' | 'parent' | 'school_admin';
 }
