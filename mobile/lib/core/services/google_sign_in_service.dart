@@ -18,6 +18,7 @@ class GoogleSignInService {
 
   // ── signIn ────────────────────────────────────────────────
   Future<String> signIn() async {
+    await _googleSignIn.signOut();
     final account = await _googleSignIn.signIn();
     if (account == null) {
       // El usuario canceló el selector de cuentas.
