@@ -172,6 +172,14 @@ export class AuthService {
       : null;
 
     if (existing && returningRole) {
+      if (payload.picture && payload.picture !== existing.avatar) {
+        const updated = await this.prisma.user.update({
+          where: { id: existing.id },
+          data: { avatar: payload.picture },
+          select: { avatar: true },
+        });
+        user = { ...existing, avatar: updated.avatar };
+      }
     } else {
     if (!dto.invitationToken) {
       throw new UnauthorizedException('INVITATION_REQUIRED');
@@ -248,7 +256,13 @@ export class AuthService {
               }
               txUser = await tx.user.update({
                 where: { id: byEmail.id },
-                data: { googleSub: payload.sub, isActive: true },
+                data: {
+                  googleSub: payload.sub,
+                  isActive: true,
+                  firstName: payload.given_name ?? byEmail.firstName,
+                  lastName: payload.family_name ?? byEmail.lastName,
+                  avatar: payload.picture ?? byEmail.avatar,
+                },
               });
             } else {
               txUser = await tx.user.create({
@@ -479,7 +493,7 @@ export class AuthService {
     return this.prisma.$transaction(async (tx) => {
       await tx.user.updateMany({
         where: { id: targetUser!.id, googleSub: null },
-        data: { googleSub: payload.sub, isActive: true },
+        data: { googleSub: payload.sub, isActive: true, avatar: payload.picture ?? undefined },
       });
 
       await tx.userRole.upsert({
