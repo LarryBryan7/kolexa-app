@@ -28,8 +28,8 @@ export function DashboardPage() {
     );
   }
 
-  const docentes = users.data?.filter((u) => u.userRoles?.[0]?.role?.name === 'teacher').length ?? 0;
-  const padres = users.data?.filter((u) => u.userRoles?.[0]?.role?.name === 'parent').length ?? 0;
+  const docentes = users.data?.filter((u) => u.userRoles?.some((r) => r.role.name === 'teacher')).length ?? 0;
+  const padres = users.data?.filter((u) => u.userRoles?.some((r) => r.role.name === 'parent')).length ?? 0;
 
   const kpis = [
     {

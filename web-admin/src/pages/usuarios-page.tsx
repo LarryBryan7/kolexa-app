@@ -50,6 +50,13 @@ const roleLabels: Record<string, string> = {
   school_admin: 'Director',
 };
 
+function staffRole(user: User): 'teacher' | 'school_admin' | undefined {
+  const names = user.userRoles?.map((r) => r.role.name) ?? [];
+  if (names.includes('school_admin')) return 'school_admin';
+  if (names.includes('teacher')) return 'teacher';
+  return undefined;
+}
+
 export function UsuariosPage() {
   const [search, setSearch] = useState('');
   const { data, isLoading, error, refetch } = useUsers(search);
@@ -78,15 +85,12 @@ export function UsuariosPage() {
 
   const staffUsers = useMemo(() => {
     if (!data) return [];
-    return data.filter((u) => {
-      const role = u.userRoles?.[0]?.role?.name;
-      return role === 'teacher' || role === 'school_admin';
-    });
+    return data.filter((u) => staffRole(u) !== undefined);
   }, [data]);
 
   const filtered = useMemo(() => {
     if (roleFilter === 'all') return staffUsers;
-    return staffUsers.filter((u) => u.userRoles?.[0]?.role?.name === roleFilter);
+    return staffUsers.filter((u) => staffRole(u) === roleFilter);
   }, [staffUsers, roleFilter]);
 
   const openCreate = () => {
@@ -97,7 +101,7 @@ export function UsuariosPage() {
 
   const openEdit = (user: User) => {
     setEditing(user);
-    const role = user.userRoles?.[0]?.role?.name === 'school_admin' ? 'school_admin' : 'teacher';
+    const role = staffRole(user) ?? 'teacher';
     reset({
       email: user.email,
       firstName: user.firstName,
@@ -152,8 +156,8 @@ export function UsuariosPage() {
       accessorKey: 'role',
       header: 'Rol',
       cell: ({ row }) => {
-        const role = row.original.userRoles?.[0]?.role?.name;
-        return role ? roleLabels[role] ?? role : '—';
+        const role = staffRole(row.original);
+        return role ? roleLabels[role] : '—';
       },
     },
     {
@@ -323,7 +327,7 @@ function InvitationDialog({ user, onClose }: { user: User; onClose: () => void }
   const { toast } = useToast();
   const [copied, setCopied] = useState(false);
 
-  const role = user.userRoles?.[0]?.role?.name === 'school_admin' ? 'school_admin' : 'teacher';
+  const role = staffRole(user) ?? 'teacher';
 
   const daysUntil = (iso: string) => {
     const diffMs = new Date(iso).getTime() - Date.now();
