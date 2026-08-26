@@ -48,6 +48,11 @@ export class AdminController {
     return this.service.updateSchool(user.schoolId!, dto);
   }
 
+  @Get('school/summary')
+  getSchoolSummary(@CurrentUser() user: UserPayload) {
+    return this.service.getSchoolSummary(user.schoolId!);
+  }
+
   // ── Aulas ────────────────────────────────────────────────
   @Get('classrooms')
   listClassrooms(@CurrentUser() user: UserPayload) {

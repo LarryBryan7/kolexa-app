@@ -10,6 +10,9 @@ function makeService() {
     assertStudentOwnedByParent: jest.fn(async (_userId: bigint, studentId: bigint) => {
       if (studentId !== 5n) throw new ForbiddenException('No tienes acceso a este alumno');
     }),
+    assertStudentReadAccess: jest.fn(async (_user: any, studentId: bigint) => {
+      if (studentId !== 5n) throw new ForbiddenException('No tienes acceso a este alumno');
+    }),
     getAuthUrl: jest.fn().mockReturnValue('https://accounts.google.com/fake'),
     isConnected: jest.fn().mockResolvedValue(true),
     syncStudent: jest.fn().mockResolvedValue({ courses: 1, courseworks: 1, cacheHit: false }),
@@ -24,6 +27,13 @@ function makeService() {
 }
 
 const fakeFile: any = { originalname: 'foto.jpg', mimetype: 'image/jpeg', buffer: Buffer.from('x') };
+
+// Endpoints de escritura/acción: siguen usando assertStudentOwnedByParent
+// (sin bypass de school_admin — ver plan de visibilidad del director).
+const WRITE_ENDPOINTS = new Set(['getAuthUrl', 'sync', 'uploadAvatar']);
+function guardMockFor(service: ReturnType<typeof makeService>, name: string) {
+  return WRITE_ENDPOINTS.has(name) ? service.assertStudentOwnedByParent : service.assertStudentReadAccess;
+}
 
 describe('ClassroomController — ownership gate en los 8 endpoints student/:id/* + parent/*', () => {
   const cases: [string, (c: ClassroomController) => Promise<any>][] = [
@@ -47,7 +57,9 @@ describe('ClassroomController — ownership gate en los 8 endpoints student/:id/
 
       await expect(call(controller)).rejects.toMatchObject({ status: 403 });
 
-      expect(service.assertStudentOwnedByParent).toHaveBeenCalledWith(fakeUser.sub, 999n);
+      const guardMock = guardMockFor(service, name);
+      const expectedFirstArg = WRITE_ENDPOINTS.has(name) ? fakeUser.sub : fakeUser;
+      expect(guardMock).toHaveBeenCalledWith(expectedFirstArg, 999n);
       // El método real del service (sync/getOverview/etc.) no debe haberse
       // llamado — el guard debe cortar ANTES, no después.
       const serviceMethodName = name === 'getParentTodaySummary' || name === 'getParentHome'
@@ -76,12 +88,14 @@ describe('ClassroomController — ownership gate en los 8 endpoints student/:id/
 
   it.each(legitimateCases)(
     'Parent A → Student A (propio) en %s → sigue funcionando (no se rompió el caso legítimo)',
-    async (_name, call) => {
+    async (name, call) => {
       const service = makeService();
       const controller = new ClassroomController(service as any);
 
       await expect(call(controller)).resolves.toBeDefined();
-      expect(service.assertStudentOwnedByParent).toHaveBeenCalledWith(fakeUser.sub, 5n);
+      const guardMock = guardMockFor(service, name);
+      const expectedFirstArg = WRITE_ENDPOINTS.has(name) ? fakeUser.sub : fakeUser;
+      expect(guardMock).toHaveBeenCalledWith(expectedFirstArg, 5n);
     },
   );
 });

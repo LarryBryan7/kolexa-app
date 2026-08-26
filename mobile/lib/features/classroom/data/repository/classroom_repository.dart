@@ -16,8 +16,9 @@ class ClassroomRepository {
     return res.data['connected'] as bool;
   }
 
-  Future<SyncResult> sync(String studentId) async {
-    final res = await _api.post('classroom/student/$studentId/sync');
+  Future<SyncResult> sync(String studentId, {bool force = false}) async {
+    final path = 'classroom/student/$studentId/sync${force ? '?force=true' : ''}';
+    final res = await _api.post(path);
     return SyncResult.fromJson(res.data as Map<String, dynamic>);
   }
 

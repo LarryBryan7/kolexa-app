@@ -7,6 +7,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { UserPayload } from '../../common/decorators/current-user.decorator';
 
 @Injectable()
 export class AppointmentsService {
@@ -161,8 +162,21 @@ export class AppointmentsService {
   }
 
   // ── getMyAppointments ─────────────────────────────────────
-  // Citas del usuario actual (padre ve sus citas, profesor ve las suyas).
-  async getMyAppointments(userId: bigint, role: 'parent' | 'teacher') {
+  async getMyAppointments(user: UserPayload, role: 'parent' | 'teacher') {
+    const userId = user.sub;
+
+    if (user.roles.includes('school_admin') && user.schoolId) {
+      return this.prisma.appointment.findMany({
+        where: { slot: { schoolId: user.schoolId } },
+        include: {
+          slot: { include: { teacher: { select: { firstName: true, lastName: true, avatar: true } } } },
+          parent: { select: { firstName: true, lastName: true, avatar: true } },
+          student: { select: { firstName: true, lastName: true } },
+        },
+        orderBy: { slot: { startTime: 'asc' } },
+      });
+    }
+
     if (role === 'parent') {
       return this.prisma.appointment.findMany({
         where: { parentId: userId },

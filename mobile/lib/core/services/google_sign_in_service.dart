@@ -12,7 +12,11 @@ class GoogleSignInService {
   static const String _serverClientId =
       '171691080214-1t7108i5q0997upk7l6n7tq2ssr3a7r3.apps.googleusercontent.com';
 
+  static const String _iosClientId =
+      '171691080214-cj1osmcu6t4csu49onfbuetq40p3j6m6.apps.googleusercontent.com';
+
   final GoogleSignIn _googleSignIn = GoogleSignIn(
+    clientId: _iosClientId,
     serverClientId: _serverClientId,
   );
 

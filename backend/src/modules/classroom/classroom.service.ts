@@ -4,6 +4,8 @@ import { google } from 'googleapis';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SupabaseStorageService } from '../storage/supabase-storage.service';
+import { UserPayload } from '../../common/decorators/current-user.decorator';
+import { isSchoolAdminOf } from '../../common/utils/school-staff-access';
 
 const STUDENT_SCOPES = [
   'https://www.googleapis.com/auth/classroom.courses.readonly',
@@ -131,6 +133,17 @@ export class ClassroomService {
     if (!rel) {
       throw new ForbiddenException('No tienes acceso a este alumno');
     }
+  }
+
+  // ── assertStudentReadAccess ────────────────────────────────
+  async assertStudentReadAccess(user: UserPayload, studentId: bigint): Promise<void> {
+    const student = await this.prisma.student.findUnique({
+      where: { id: studentId },
+      select: { schoolId: true },
+    });
+    if (!student) throw new NotFoundException('Alumno no encontrado');
+    if (isSchoolAdminOf(user, student.schoolId)) return;
+    await this.assertStudentOwnedByParent(user.sub, studentId);
   }
 
   // ── Foto de perfil del alumno (subida por el padre) ──────
@@ -705,7 +718,10 @@ export class ClassroomService {
   }
 
   // ── Sincroniza cursos y tareas desde Google Classroom ────
-  async syncStudent(studentId: bigint): Promise<{ courses: number; courseworks: number; cacheHit: boolean }> {
+  async syncStudent(
+    studentId: bigint,
+    force = false,
+  ): Promise<{ courses: number; courseworks: number; cacheHit: boolean }> {
     type CacheRow = {
       last_synced_at: Date | null;
       course_count: bigint;
@@ -722,7 +738,7 @@ export class ClassroomService {
     const cachedCourses = Number(row?.course_count ?? 0);
     const cachedCourseworks = Number(row?.coursework_count ?? 0);
     const diffMs = lastSyncedAt ? Date.now() - lastSyncedAt.getTime() : -1;
-    const cacheHit = !!lastSyncedAt && diffMs < 15 * 60 * 1000;
+    const cacheHit = !force && !!lastSyncedAt && diffMs < 15 * 60 * 1000;
     if (cacheHit) {
       return { courses: cachedCourses, courseworks: cachedCourseworks, cacheHit: true };
     }
@@ -825,10 +841,23 @@ export class ClassroomService {
       }
     }
     if (allCws.length > 0) {
-      await this.prisma.gcCoursework.createMany({
-        data: allCws,
-        skipDuplicates: true,
-      });
+      const valueRows = allCws.map(
+        (cw) =>
+          Prisma.sql`(${cw.courseId}, ${cw.googleId}, ${cw.title}, ${cw.description}, ${cw.dueDate}, ${cw.maxPoints}, ${cw.workType}, ${cw.state}, ${cw.alternateLink}, NOW())`,
+      );
+      await this.prisma.$executeRaw`
+        INSERT INTO gc_coursework (course_id, google_id, title, description, due_date, max_points, work_type, state, alternate_link, synced_at)
+        VALUES ${Prisma.join(valueRows)}
+        ON CONFLICT (course_id, google_id) DO UPDATE SET
+          title = EXCLUDED.title,
+          description = EXCLUDED.description,
+          due_date = EXCLUDED.due_date,
+          max_points = EXCLUDED.max_points,
+          work_type = EXCLUDED.work_type,
+          state = EXCLUDED.state,
+          alternate_link = EXCLUDED.alternate_link,
+          synced_at = EXCLUDED.synced_at
+      `;
     }
 
     // 3c. Submissions: mapa googleId→id de courseworks del estudiante (1 consulta)

@@ -61,6 +61,6 @@ export class PaymentsController {
     @Param('studentId', ParseIntPipe) studentId: number,
     @CurrentUser() user: UserPayload,
   ) {
-    return this.service.getStudentObligations(studentId, user.sub);
+    return this.service.getStudentObligations(studentId, user);
   }
 }

@@ -2,6 +2,8 @@
 
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { UserPayload } from '../../common/decorators/current-user.decorator';
+import { isSchoolAdminOf } from '../../common/utils/school-staff-access';
 
 @Injectable()
 export class AnecdotesService {
@@ -63,14 +65,19 @@ export class AnecdotesService {
   }
 
   // ── getForStudent ─────────────────────────────────────────
-  async getForStudent(studentId: number, requesterId: bigint, isTeacher: boolean) {
+  async getForStudent(studentId: number, user: UserPayload, isTeacher: boolean) {
     const student = await this.prisma.student.findUnique({
       where: { id: studentId },
-      select: { id: true },
+      select: { id: true, schoolId: true },
     });
     if (!student) throw new NotFoundException('Alumno no encontrado');
 
-    if (isTeacher) {
+    const isAdmin = isSchoolAdminOf(user, student.schoolId);
+    const requesterId = user.sub;
+
+    if (isAdmin) {
+      // sin chequeo de relación — acceso concedido
+    } else if (isTeacher) {
       const authorized = await this.isTeacherOfStudent(requesterId, studentId);
       if (!authorized) {
         throw new ForbiddenException('No tienes acceso a las anécdotas de este alumno');
@@ -87,8 +94,8 @@ export class AnecdotesService {
       where: {
         studentId,
         deletedAt: null,
-        // Los padres solo ven anécdotas no privadas
-        ...(!isTeacher && { isPrivate: false }),
+        // Los padres solo ven anécdotas no privadas (docentes y el director sí las ven)
+        ...(!isTeacher && !isAdmin && { isPrivate: false }),
       },
       include: {
         author: { select: { firstName: true, lastName: true, avatar: true } },
