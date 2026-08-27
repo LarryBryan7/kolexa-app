@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../../core/services/manufacturer_settings_service.dart';
 import '../../classroom/data/models/gc_models.dart';
 
 const _kSvgClipboardList =
@@ -453,6 +454,8 @@ class _TaskCard extends StatelessWidget {
   Future<void> _abrirClassroom() async {
     final link = classroomLink;
     if (link == null) return;
+    final openedNative = await ManufacturerSettingsService.instance.openExternalUrl(link);
+    if (openedNative) return;
     final uri = Uri.tryParse(link);
     if (uri != null) await launchUrl(uri, mode: LaunchMode.externalApplication);
   }

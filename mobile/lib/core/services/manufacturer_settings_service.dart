@@ -110,6 +110,19 @@ class ManufacturerSettingsService {
     }
   }
 
+  Future<bool> openExternalUrl(String url) async {
+    if (!Platform.isAndroid) return false;
+    try {
+      final result = await _channel.invokeMethod<bool>(
+        'openExternalUrl',
+        {'url': url},
+      );
+      return result ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   // ── Tracking de recordatorios ────────────────────────────
 
   static const _kDone = 'autostart_done';
