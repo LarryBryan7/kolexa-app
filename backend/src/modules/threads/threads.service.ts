@@ -570,6 +570,7 @@ export class ThreadsService {
         .sendToUser(p.userId, title, preview, {
           screen: 'thread',
           threadId: threadId.toString(),
+          refresh: 'true',
         })
         .catch(() => {});
     }

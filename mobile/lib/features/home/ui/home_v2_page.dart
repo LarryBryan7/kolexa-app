@@ -1177,22 +1177,20 @@ class _NovedadesCardState extends State<_NovedadesCard>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _scheduleTimer?.cancel();
-    // Limpiar el callback global de refresh para no dejar referencias colgadas.
-    if (PushNotificationsService.instance.onDataRefresh == _handleDataRefresh) {
-      PushNotificationsService.instance.onDataRefresh = null;
-    }
+    // Des-suscribir para no dejar referencias colgadas.
+    PushNotificationsService.instance.removeDataRefreshListener(_handleDataRefresh);
     super.dispose();
   }
 
   // ── Auto-refresh en tiempo real ──────────────────────────
   void _startAutoRefresh() {
-    PushNotificationsService.instance.onDataRefresh = _handleDataRefresh;
+    PushNotificationsService.instance.addDataRefreshListener(_handleDataRefresh);
     _scheduleTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       _recalculateSchedule();
     });
   }
 
-  void _handleDataRefresh() {
+  void _handleDataRefresh(Map<String, dynamic> data) {
     if (!mounted) return;
     widget.onRefresh();
   }
@@ -1239,7 +1237,7 @@ class _NovedadesCardState extends State<_NovedadesCard>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _handleDataRefresh();
+      _handleDataRefresh(const {});
     }
   }
 
