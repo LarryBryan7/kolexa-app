@@ -48,12 +48,14 @@ export async function api<T = unknown>(
 ): Promise<T> {
   const { method = 'GET', body, headers = {}, auth = true } = options;
 
+  const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
+
   const finalHeaders: Record<string, string> = {
     Accept: 'application/json',
     ...headers,
   };
 
-  if (body !== undefined) {
+  if (body !== undefined && !isFormData) {
     finalHeaders['Content-Type'] = 'application/json';
   }
 
@@ -64,7 +66,7 @@ export async function api<T = unknown>(
   const response = await fetch(`${API_URL}${path}`, {
     method,
     headers: finalHeaders,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    body: body === undefined ? undefined : isFormData ? body : JSON.stringify(body),
   });
 
   // Manejo de 401 → sesión expirada

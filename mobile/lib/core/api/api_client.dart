@@ -9,9 +9,8 @@ class ApiClient {
     'KOLEXA_DEV_HOST',
     defaultValue: '192.168.18.43',
   );
-  // Flag explícito: solo se activa si el desarrollador pasa KOLEXA_DEV_HOST
-  // en el build. En producción (sin el flag) siempre usamos api.kolexa.pe.
-  static const bool _useDevHost = bool.fromEnvironment('KOLEXA_DEV_HOST');
+  static const bool _useDevHost =
+      String.fromEnvironment('KOLEXA_DEV_HOST') != '';
   static const bool _useRailway = bool.fromEnvironment('KOLEXA_USE_RAILWAY');
   static final String _baseUrl = kReleaseMode
       ? (_useDevHost

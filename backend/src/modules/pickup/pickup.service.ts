@@ -11,16 +11,17 @@ export class PickupService {
 
   // ── assertParentOrStaffAccess ─────────────────────────────
   private async assertParentOrStaffAccess(userId: bigint, studentId: number): Promise<void> {
-    const student = await this.prisma.student.findUnique({
-      where: { id: studentId },
-      select: { schoolId: true },
-    });
+    const [student, isParent] = await Promise.all([
+      this.prisma.student.findUnique({
+        where: { id: studentId },
+        select: { schoolId: true },
+      }),
+      this.prisma.userStudent.findFirst({
+        where: { userId, studentId },
+        select: { id: true },
+      }),
+    ]);
     if (!student) throw new NotFoundException('Alumno no encontrado');
-
-    const isParent = await this.prisma.userStudent.findFirst({
-      where: { userId, studentId },
-      select: { id: true },
-    });
     if (isParent) return;
 
     const isStaff = await this.prisma.userRole.findFirst({

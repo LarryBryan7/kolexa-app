@@ -13,7 +13,6 @@ import '../../features/onboarding/ui/hijos_encontrados_page.dart';
 import '../../features/auth/data/models/user_model.dart';
 import '../../features/classroom/ui/classroom_page.dart';
 import '../../features/classroom/bloc/classroom_bloc.dart';
-import '../../features/home/ui/esta_semana_page.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 // ── _fadePage ─────────────────────────────────────────────
@@ -37,7 +36,6 @@ class AppRouter {
   static const String hijosEncontrados = '/hijos-encontrados';
   static const String home = '/home';
   static const String classroom = '/classroom';
-  static const String estaSemana = '/esta-semana';
 
   // Rutas del flujo público (sin sesión).
   static const Set<String> _publicFlow = {login};
@@ -127,17 +125,6 @@ class AppRouter {
         GoRoute(
           path: '/teacher-connected',
           redirect: (_, __) => home,
-        ),
-        GoRoute(
-          path: estaSemana,
-          pageBuilder: (context, state) {
-            final studentId = state.uri.queryParameters['studentId'] ?? '';
-            final studentName = state.uri.queryParameters['studentName'] ?? 'Alumno';
-            return _fadePage(state, EstaSemanPage(
-              studentId: studentId,
-              studentName: studentName,
-            ));
-          },
         ),
         GoRoute(
           path: classroom,

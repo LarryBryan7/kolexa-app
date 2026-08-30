@@ -624,22 +624,30 @@ export class ClassroomService {
   }
 
   async getTeacherRoster(userId: bigint, courseId?: bigint) {
-    const course = await this.prisma.gcTeacherCourse.findFirst({
+    const courses = await this.prisma.gcTeacherCourse.findMany({
       where: courseId
         ? { teacherId: userId, id: courseId }
         : { teacherId: userId },
       include: { students: { orderBy: { fullName: 'asc' } } },
-      orderBy: { name: 'asc' },
     });
-    if (!course) return [];
+    if (courses.length === 0) return [];
 
-    return course.students.map((s) => ({
-      id: Number(s.id),
-      googleId: s.googleId,
-      fullName: s.fullName,
-      email: s.email,
-      photoUrl: s.photoUrl,
-    }));
+    const seen = new Map<string, (typeof courses)[number]['students'][number]>();
+    for (const c of courses) {
+      for (const s of c.students) {
+        if (!seen.has(s.googleId)) seen.set(s.googleId, s);
+      }
+    }
+
+    return [...seen.values()]
+      .sort((a, b) => a.fullName.localeCompare(b.fullName))
+      .map((s) => ({
+        id: Number(s.id),
+        googleId: s.googleId,
+        fullName: s.fullName,
+        email: s.email,
+        photoUrl: s.photoUrl,
+      }));
   }
 
   // ── Construye un cliente OAuth autenticado para el docente ─
@@ -951,31 +959,34 @@ export class ClassroomService {
       course_name: string;
       course_section: string | null;
     };
-    const [courseRows, upcomingRows] = await this.prisma.$transaction([
-      this.prisma.$queryRaw<CourseRow[]>`
-        SELECT c.id, c.name, c.section, c.teacher_name,
-               (SELECT COUNT(*) FROM gc_coursework cw WHERE cw.course_id = c.id) AS coursework_count
-        FROM gc_courses c
-        WHERE c.student_id = ${studentId}
-        ORDER BY c.name ASC
-      `,
-      this.prisma.$queryRaw<UpcomingRow[]>`
-        SELECT cw.id, cw.course_id, cw.title, cw.description, cw.due_date, cw.max_points, cw.work_type,
-               cw.alternate_link, c.name AS course_name, c.section AS course_section
-        FROM gc_coursework cw
-        JOIN gc_courses c ON cw.course_id = c.id
-        WHERE c.student_id = ${studentId}
-          AND cw.state = 'PUBLISHED'
-          AND cw.work_type != 'MATERIAL'
-          AND (cw.due_date >= ${startOfThisWeek} OR cw.due_date IS NULL)
-          AND NOT EXISTS (
-            SELECT 1 FROM gc_student_submissions s
-            WHERE s.coursework_id = cw.id
-              AND (s.submission_state IN ('TURNED_IN','RETURNED') OR s.assigned_grade IS NOT NULL)
-          )
-        ORDER BY cw.due_date ASC NULLS LAST
-        LIMIT 20
-      `,
+    const [[courseRows, upcomingRows], sync] = await Promise.all([
+      this.prisma.$transaction([
+        this.prisma.$queryRaw<CourseRow[]>`
+          SELECT c.id, c.name, c.section, c.teacher_name,
+                 (SELECT COUNT(*) FROM gc_coursework cw WHERE cw.course_id = c.id) AS coursework_count
+          FROM gc_courses c
+          WHERE c.student_id = ${studentId}
+          ORDER BY c.name ASC
+        `,
+        this.prisma.$queryRaw<UpcomingRow[]>`
+          SELECT cw.id, cw.course_id, cw.title, cw.description, cw.due_date, cw.max_points, cw.work_type,
+                 cw.alternate_link, c.name AS course_name, c.section AS course_section
+          FROM gc_coursework cw
+          JOIN gc_courses c ON cw.course_id = c.id
+          WHERE c.student_id = ${studentId}
+            AND cw.state = 'PUBLISHED'
+            AND cw.work_type != 'MATERIAL'
+            AND (cw.due_date >= ${startOfThisWeek} OR cw.due_date IS NULL)
+            AND NOT EXISTS (
+              SELECT 1 FROM gc_student_submissions s
+              WHERE s.coursework_id = cw.id
+                AND (s.submission_state IN ('TURNED_IN','RETURNED') OR s.assigned_grade IS NOT NULL)
+            )
+          ORDER BY cw.due_date ASC NULLS LAST
+          LIMIT 20
+        `,
+      ]),
+      this.syncStudent(studentId),
     ]);
 
     const courses = courseRows.map((c) => ({
@@ -996,9 +1007,6 @@ export class ClassroomService {
       alternateLink: cw.alternate_link,
       course: { name: cw.course_name, section: cw.course_section },
     }));
-
-    // sync (con caché): 1 consulta SQL adicional al pooler.
-    const sync = await this.syncStudent(studentId);
 
     return { connected: true, courses, upcoming, sync };
   }
@@ -1145,6 +1153,8 @@ export class ClassroomService {
       alternate_link: string | null;
       course_name: string;
       course_section: string | null;
+      institutional_course_id: bigint | null;
+      teacher_name: string | null;
     };
 
     const sessionRows = await this.prisma.$queryRaw<SessionRow[]>`
@@ -1159,22 +1169,48 @@ export class ClassroomService {
     // Las 3 queries restantes se mantienen en UNA transacción (1 conexión)
     // para no cambiar el comportamiento con el pooler (connection_limit=1).
     const [blockRows, tokenRows, upcomingRows] = await this.prisma.$transaction(async (tx) => {
-      const blocks = await tx.$queryRaw<BlockRow[]>`
-        SELECT b.start_time, b.end_time, b.type, c.name AS course_name
+      let blocks = await tx.$queryRaw<BlockRow[]>`
+        SELECT b.start_time, b.end_time, b.type,
+               COALESCE(co.name, b.label) AS course_name
         FROM schedule_blocks b
-        LEFT JOIN gc_teacher_courses c ON b.gc_teacher_course_id = c.id
-        WHERE b.owner_id = ${sessionRows.length > 0 ? sessionRows[0].teacher_id : 0}
-          AND b.day_of_week = ${dayOfWeek}
+        JOIN student_enrollments e
+          ON e.classroom_id = b.classroom_id
+         AND e.student_id = ${studentId}
+         AND e.is_active = true
+        LEFT JOIN classroom_courses cc ON b.classroom_course_id = cc.id
+        LEFT JOIN courses co ON cc.course_id = co.id
+        WHERE b.day_of_week = ${dayOfWeek}
         ORDER BY b.start_time ASC
       `;
+
+      // Respaldo: horario cargado por el docente (modelo anterior). Solo si el
+      // colegio todavía no cargó el del aula, para no dejar al padre sin nada.
+      if (blocks.length === 0) {
+        blocks = await tx.$queryRaw<BlockRow[]>`
+          SELECT b.start_time, b.end_time, b.type, c.name AS course_name
+          FROM schedule_blocks b
+          LEFT JOIN gc_teacher_courses c ON b.gc_teacher_course_id = c.id
+          WHERE b.owner_id = ${sessionRows.length > 0 ? sessionRows[0].teacher_id : 0}
+            AND b.day_of_week = ${dayOfWeek}
+          ORDER BY b.start_time ASC
+        `;
+      }
 
       const tokens = await tx.$queryRaw<TokenRow[]>`SELECT id FROM google_tokens WHERE student_id = ${studentId} LIMIT 1`;
 
       const upcoming = await tx.$queryRaw<UpcomingRow[]>`
         SELECT cw.id, cw.course_id, cw.title, cw.description, cw.due_date, cw.max_points, cw.work_type,
-               cw.alternate_link, c.name AS course_name, c.section AS course_section
+               cw.alternate_link,
+               COALESCE(ico.name, c.name) AS course_name,
+               c.section AS course_section,
+               ico.id AS institutional_course_id,
+               NULLIF(TRIM(CONCAT(t.first_name, ' ', COALESCE(t.last_name, ''))), '') AS teacher_name
         FROM gc_coursework cw
         JOIN gc_courses c ON cw.course_id = c.id
+        LEFT JOIN gc_course_links gl ON gl.google_course_id = c.google_id
+        LEFT JOIN classroom_courses ccx ON gl.classroom_course_id = ccx.id
+        LEFT JOIN courses ico ON ccx.course_id = ico.id
+        LEFT JOIN users t ON ccx.teacher_id = t.id
         WHERE c.student_id = ${studentId}
           AND cw.state = 'PUBLISHED'
           AND cw.work_type != 'MATERIAL'
@@ -1251,7 +1287,14 @@ export class ClassroomService {
           maxPoints: cw.max_points,
           workType: cw.work_type,
           alternateLink: cw.alternate_link,
-          course: { name: cw.course_name, section: cw.course_section },
+          course: {
+            name: cw.course_name,
+            section: cw.course_section,
+            // Presentes solo si el colegio ya vinculó el curso de Classroom con
+            // el suyo. El cliente los usa si vienen y los ignora si no.
+            institutionalId: cw.institutional_course_id?.toString() ?? null,
+            teacherName: cw.teacher_name,
+          },
         }))
       : [];
 

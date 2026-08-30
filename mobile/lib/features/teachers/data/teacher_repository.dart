@@ -4,8 +4,8 @@ import '../../../core/api/api_client.dart';
 class TeacherClassroom {
   final int id;
   final String name;
-  final String grade;
-  final String section;
+  final String? grade;
+  final String? section;
   final int studentCount;
 
   const TeacherClassroom({
@@ -20,9 +20,9 @@ class TeacherClassroom {
     return TeacherClassroom(
       id: json['id'] as int,
       name: json['name'] as String,
-      grade: json['grade'] as String,
-      section: json['section'] as String,
-      studentCount: json['studentCount'] as int,
+      grade: json['grade'] as String?,
+      section: json['section'] as String?,
+      studentCount: json['studentCount'] as int? ?? 0,
     );
   }
 }
