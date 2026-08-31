@@ -133,11 +133,13 @@ class _ThreadPageState extends State<ThreadPage> with WidgetsBindingObserver {
 
     final upToCursor = text.substring(0, cursor);
     final at = upToCursor.lastIndexOf('@');
-    if (at == -1 || upToCursor.substring(at + 1).contains(RegExp(r'[\s\]]'))) {
+    if (at == -1) return _clearMentions();
+    final afterAt = upToCursor.substring(at + 1);
+    if (afterAt.contains(']') || afterAt.contains('\n') || afterAt.length > 60) {
       return _clearMentions();
     }
 
-    final query = upToCursor.substring(at + 1);
+    final query = afterAt;
     _mentionStart = at;
     _mentionDebounce?.cancel();
     _mentionDebounce = Timer(const Duration(milliseconds: 250), () async {
