@@ -115,9 +115,10 @@ class PushNotificationsService {
       return settings.authorizationStatus == AuthorizationStatus.authorized ||
              settings.authorizationStatus == AuthorizationStatus.provisional;
     }
-    // Android 13+: el permiso POST_NOTIFICATIONS se pide en AndroidManifest
-    // y Flutter lo muestra automáticamente al primer mensaje
-    return true;
+    final status = await Permission.notification.status;
+    if (status.isGranted) return true;
+    final result = await Permission.notification.request();
+    return result.isGranted;
   }
 
   Future<void> _refreshToken() async {
