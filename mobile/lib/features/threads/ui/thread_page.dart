@@ -55,7 +55,6 @@ class _ThreadPageState extends State<ThreadPage> with WidgetsBindingObserver {
   bool _loadingFirstTime = false;
   bool _sending = false;
   String? _error;
-  bool _hasScrolledOnce = false;
 
   // ── Autocompletado de "@" ──────────────────────────────────
   Timer? _mentionDebounce;
@@ -93,16 +92,7 @@ class _ThreadPageState extends State<ThreadPage> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) _load();
   }
 
-  bool get _isNearBottom {
-    if (!_scroll.hasClients) return true;
-    final position = _scroll.position;
-    return position.pixels >= position.maxScrollExtent - 80;
-  }
-
   Future<void> _load({bool forceScroll = false}) async {
-    final shouldScroll = forceScroll || _isNearBottom;
-    // El spinner de pantalla completa solo si de verdad no hay nada que
-    // mostrar todavía (ni siquiera de la caché).
     if (_messages == null) setState(() => _loadingFirstTime = true);
     try {
       final msgs = await _repo.getMessages(widget.threadId);
@@ -113,11 +103,8 @@ class _ThreadPageState extends State<ThreadPage> with WidgetsBindingObserver {
         _error = null;
         _loadingFirstTime = false;
       });
-      if (shouldScroll) {
-        final animate = _hasScrolledOnce;
-        _hasScrolledOnce = true;
-        WidgetsBinding.instance
-            .addPostFrameCallback((_) => _scrollToBottom(animate: animate));
+      if (forceScroll) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
       }
     } catch (e) {
       if (!mounted) return;
@@ -128,14 +115,10 @@ class _ThreadPageState extends State<ThreadPage> with WidgetsBindingObserver {
     }
   }
 
-  void _scrollToBottom({bool animate = true}) {
+  void _scrollToBottom() {
     if (!_scroll.hasClients) return;
-    if (!animate) {
-      _scroll.jumpTo(_scroll.position.maxScrollExtent);
-      return;
-    }
     _scroll.animateTo(
-      _scroll.position.maxScrollExtent,
+      0,
       duration: const Duration(milliseconds: 250),
       curve: Curves.easeOut,
     );
@@ -325,13 +308,17 @@ class _ThreadPageState extends State<ThreadPage> with WidgetsBindingObserver {
                 }
                 return ListView.builder(
                     controller: _scroll,
+                    reverse: true,
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                     itemCount: messages.length,
-                    itemBuilder: (context, i) => _Bubble(
-                      message: messages[i],
-                      isMine: messages[i].senderId == _myUserId.toString(),
-                      onOpenMention: _openMention,
-                    ),
+                    itemBuilder: (context, i) {
+                      final message = messages[messages.length - 1 - i];
+                      return _Bubble(
+                        message: message,
+                        isMine: message.senderId == _myUserId.toString(),
+                        onOpenMention: _openMention,
+                      );
+                    },
                   );
                 },
               ),
