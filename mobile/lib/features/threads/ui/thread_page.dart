@@ -55,6 +55,7 @@ class _ThreadPageState extends State<ThreadPage> with WidgetsBindingObserver {
   bool _loadingFirstTime = false;
   bool _sending = false;
   String? _error;
+  bool _hasScrolledOnce = false;
 
   // ── Autocompletado de "@" ──────────────────────────────────
   Timer? _mentionDebounce;
@@ -100,8 +101,9 @@ class _ThreadPageState extends State<ThreadPage> with WidgetsBindingObserver {
 
   Future<void> _load({bool forceScroll = false}) async {
     final shouldScroll = forceScroll || _isNearBottom;
-    final isFirstLoad = _messages == null;
-    if (isFirstLoad) setState(() => _loadingFirstTime = true);
+    // El spinner de pantalla completa solo si de verdad no hay nada que
+    // mostrar todavía (ni siquiera de la caché).
+    if (_messages == null) setState(() => _loadingFirstTime = true);
     try {
       final msgs = await _repo.getMessages(widget.threadId);
       _cache[widget.threadId] = msgs;
@@ -112,8 +114,10 @@ class _ThreadPageState extends State<ThreadPage> with WidgetsBindingObserver {
         _loadingFirstTime = false;
       });
       if (shouldScroll) {
+        final animate = _hasScrolledOnce;
+        _hasScrolledOnce = true;
         WidgetsBinding.instance
-            .addPostFrameCallback((_) => _scrollToBottom(animate: !isFirstLoad));
+            .addPostFrameCallback((_) => _scrollToBottom(animate: animate));
       }
     } catch (e) {
       if (!mounted) return;
