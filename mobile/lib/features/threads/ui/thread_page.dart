@@ -39,21 +39,23 @@ class _MentionComposerController extends TextEditingController {
       if (m.start > last) {
         spans.add(TextSpan(text: source.substring(last, m.start), style: style));
       }
+      final start = m.start;
+      final end = m.end;
       spans.add(WidgetSpan(
         alignment: PlaceholderAlignment.middle,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-          decoration: BoxDecoration(
-            color: _kPrimaryLt,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Text(
-            '📋 ${m.group(1)}',
-            style: (style ?? const TextStyle()).copyWith(
-              color: _kPrimary,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
+        child: _MentionChip(
+          label: m.group(1)!,
+          // Deshacer la mención: la saca del texto (no solo la oculta) —
+          // vuelve a quedar como si nunca se hubiera elegido.
+          onRemove: () {
+            final current = text;
+            if (end > current.length) return; // el texto ya cambió, no tocar
+            final newText = current.replaceRange(start, end, '');
+            value = TextEditingValue(
+              text: newText,
+              selection: TextSelection.collapsed(offset: start.clamp(0, newText.length)),
+            );
+          },
         ),
       ));
       last = m.end;
@@ -62,6 +64,52 @@ class _MentionComposerController extends TextEditingController {
       spans.add(TextSpan(text: source.substring(last), style: style));
     }
     return TextSpan(style: style, children: spans);
+  }
+}
+
+class _MentionChip extends StatelessWidget {
+  final String label;
+  final VoidCallback onRemove;
+  const _MentionChip({required this.label, required this.onRemove});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 160),
+      margin: const EdgeInsets.symmetric(horizontal: 1),
+      padding: const EdgeInsets.only(left: 8, right: 3),
+      decoration: BoxDecoration(
+        color: _kPrimaryLt,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: _kPrimary.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: _kPrimary,
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+                height: 1,
+              ),
+            ),
+          ),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onRemove,
+            child: const Padding(
+              padding: EdgeInsets.all(4),
+              child: Icon(Icons.close_rounded, size: 14, color: _kPrimary),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
