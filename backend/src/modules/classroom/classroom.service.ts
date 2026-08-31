@@ -1157,18 +1157,20 @@ export class ClassroomService {
       teacher_name: string | null;
     };
 
-    const sessionRows = await this.prisma.$queryRaw<SessionRow[]>`
-      SELECT s.id, s.teacher_id, s.created_at, s.photo_urls,
-             (SELECT r.status FROM gc_attendance_records r WHERE r.session_id = s.id ORDER BY r.id LIMIT 1) AS status
-      FROM gc_attendance_sessions s
-      WHERE s.date = ${todayDate}
-      ORDER BY s.created_at DESC
-      LIMIT 1
-    `;
+    const [sessionRows, studentForAvatar] = await Promise.all([
+      this.prisma.$queryRaw<SessionRow[]>`
+        SELECT s.id, s.teacher_id, s.created_at, s.photo_urls,
+               (SELECT r.status FROM gc_attendance_records r WHERE r.session_id = s.id ORDER BY r.id LIMIT 1) AS status
+        FROM gc_attendance_sessions s
+        WHERE s.date = ${todayDate}
+        ORDER BY s.created_at DESC
+        LIMIT 1
+      `,
+      this.prisma.student.findUnique({ where: { id: studentId }, select: { avatar: true } }),
+    ]);
 
-    // Las 3 queries restantes se mantienen en UNA transacción (1 conexión)
-    // para no cambiar el comportamiento con el pooler (connection_limit=1).
-    const [blockRows, tokenRows, upcomingRows] = await this.prisma.$transaction(async (tx) => {
+    const [[blockRows, tokenRows, upcomingRows], avatarUrls] = await Promise.all([
+      this.prisma.$transaction(async (tx) => {
       let blocks = await tx.$queryRaw<BlockRow[]>`
         SELECT b.start_time, b.end_time, b.type,
                COALESCE(co.name, b.label) AS course_name
@@ -1224,8 +1226,13 @@ export class ClassroomService {
         LIMIT 20
       `;
 
-      return [blocks, tokens, upcoming] as [BlockRow[], TokenRow[], UpcomingRow[]];
-    });
+        return [blocks, tokens, upcoming] as [BlockRow[], TokenRow[], UpcomingRow[]];
+      }),
+      studentForAvatar?.avatar
+        ? this.storage.getSignedUrls([studentForAvatar.avatar], 3600, 'avatars')
+        : Promise.resolve([]),
+    ]);
+    const avatarUrl = avatarUrls[0] ?? null;
 
     // ── todaySummary ──
     const session = sessionRows[0] ?? null;
@@ -1298,7 +1305,7 @@ export class ClassroomService {
         }))
       : [];
 
-    return { todaySummary, upcomingStatus: { connected, upcoming } };
+    return { todaySummary, upcomingStatus: { connected, upcoming }, avatarUrl };
   }
 
   async isConnected(studentId: bigint): Promise<boolean> {

@@ -127,10 +127,12 @@ class UpcomingStatus {
 class ParentHomeData {
   final TodaySummary todaySummary;
   final UpcomingStatus upcomingStatus;
+  final String? avatarUrl;
 
   const ParentHomeData({
     required this.todaySummary,
     required this.upcomingStatus,
+    this.avatarUrl,
   });
 
   factory ParentHomeData.fromJson(Map<String, dynamic> json) {
@@ -139,6 +141,7 @@ class ParentHomeData {
           json['todaySummary'] as Map<String, dynamic>? ?? {}),
       upcomingStatus: UpcomingStatus.fromJson(
           json['upcomingStatus'] as Map<String, dynamic>? ?? {}),
+      avatarUrl: json['avatarUrl'] as String?,
     );
   }
 }

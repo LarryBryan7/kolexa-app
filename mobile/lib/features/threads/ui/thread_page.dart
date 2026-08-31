@@ -44,12 +44,15 @@ class ThreadPage extends StatefulWidget {
 }
 
 class _ThreadPageState extends State<ThreadPage> with WidgetsBindingObserver {
+  static final Map<String, List<ThreadMessage>> _cache = {};
+
   late final ThreadsRepository _repo;
   late final int _myUserId;
   late final List<String> _myRoles;
   final _controller = TextEditingController();
   final _scroll = ScrollController();
-  Future<List<ThreadMessage>>? _future;
+  List<ThreadMessage>? _messages;
+  bool _loadingFirstTime = false;
   bool _sending = false;
   String? _error;
 
@@ -66,6 +69,7 @@ class _ThreadPageState extends State<ThreadPage> with WidgetsBindingObserver {
     _myUserId = authState is AuthAuthenticated ? authState.user.id : -1;
     _myRoles = authState is AuthAuthenticated ? authState.user.roles : const [];
     _controller.addListener(_onTextChanged);
+    _messages = _cache[widget.threadId];
     _load();
     // Se marca leído al entrar: si el otro responde mientras se lee, el
     // siguiente refresh de la bandeja ya no lo mostrará como pendiente.
@@ -88,14 +92,34 @@ class _ThreadPageState extends State<ThreadPage> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) _load();
   }
 
-  void _load() {
-    setState(() {
-      _error = null;
-      _future = _repo.getMessages(widget.threadId).then((msgs) {
-        WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
-        return msgs;
+  bool get _isNearBottom {
+    if (!_scroll.hasClients) return true;
+    final position = _scroll.position;
+    return position.pixels >= position.maxScrollExtent - 80;
+  }
+
+  Future<void> _load({bool forceScroll = false}) async {
+    final shouldScroll = forceScroll || _isNearBottom;
+    if (_messages == null) setState(() => _loadingFirstTime = true);
+    try {
+      final msgs = await _repo.getMessages(widget.threadId);
+      _cache[widget.threadId] = msgs;
+      if (!mounted) return;
+      setState(() {
+        _messages = msgs;
+        _error = null;
+        _loadingFirstTime = false;
       });
-    });
+      if (shouldScroll) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadingFirstTime = false;
+        if (_messages == null) _error = e.toString();
+      });
+    }
   }
 
   void _scrollToBottom() {
@@ -214,7 +238,7 @@ class _ThreadPageState extends State<ThreadPage> with WidgetsBindingObserver {
     try {
       await _repo.sendMessage(widget.threadId, body);
       _controller.clear();
-      _load();
+      _load(forceScroll: true);
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
@@ -271,25 +295,25 @@ class _ThreadPageState extends State<ThreadPage> with WidgetsBindingObserver {
               ),
             ),
             Expanded(
-              child: FutureBuilder<List<ThreadMessage>>(
-                future: _future,
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
+              child: Builder(builder: (context) {
+                if (_messages == null) {
+                  if (_loadingFirstTime) {
                     return const Center(child: CircularProgressIndicator(color: _kPrimary));
                   }
-                  if (snapshot.hasError) {
+                  if (_error != null) {
                     return Center(
                       child: TextButton(onPressed: _load, child: const Text('Reintentar')),
                     );
                   }
-                  final messages = snapshot.data ?? [];
-                  if (messages.isEmpty) {
-                    return const Center(
-                      child: Text('Escribe el primer mensaje',
-                          style: TextStyle(color: _kTextGray)),
-                    );
-                  }
-                  return ListView.builder(
+                }
+                final messages = _messages ?? [];
+                if (messages.isEmpty) {
+                  return const Center(
+                    child: Text('Escribe el primer mensaje',
+                        style: TextStyle(color: _kTextGray)),
+                  );
+                }
+                return ListView.builder(
                     controller: _scroll,
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                     itemCount: messages.length,

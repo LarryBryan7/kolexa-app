@@ -482,16 +482,20 @@ class _HomeV2PageState extends State<HomeV2Page> with WidgetsBindingObserver {
 
   List<_Child> _buildChildren(AuthState state) {
     if (state is AuthAuthenticated && state.user.children.isNotEmpty) {
-      return state.user.children
-          .map((c) => _Child(
-                studentId: c.id.toString(),
-                initials: _initials(c.firstName, c.lastName),
-                fullName: c.fullName,
-                section: c.section,
-                age: c.age,
-                avatarUrl: c.avatarUrl,
-              ))
-          .toList();
+      return state.user.children.asMap().entries.map((entry) {
+        final i = entry.key;
+        final c = entry.value;
+        final freshAvatar =
+            i == _selectedChild ? _parentHome?.avatarUrl : null;
+        return _Child(
+          studentId: c.id.toString(),
+          initials: _initials(c.firstName, c.lastName),
+          fullName: c.fullName,
+          section: c.section,
+          age: c.age,
+          avatarUrl: freshAvatar ?? c.avatarUrl,
+        );
+      }).toList();
     }
     return [];
   }
