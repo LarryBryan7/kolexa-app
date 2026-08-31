@@ -145,6 +145,8 @@ class ThreadMessage {
   final String senderName;
   final String body;
   final DateTime sentAt;
+  final bool isPending;
+  final bool isFailed;
 
   const ThreadMessage({
     required this.id,
@@ -152,6 +154,8 @@ class ThreadMessage {
     required this.senderName,
     required this.body,
     required this.sentAt,
+    this.isPending = false,
+    this.isFailed = false,
   });
 
   factory ThreadMessage.fromJson(Map<String, dynamic> json) => ThreadMessage(
@@ -161,6 +165,22 @@ class ThreadMessage {
         body: json['body'] as String,
         sentAt: DateTime.parse(json['sentAt'] as String),
       );
+
+  ThreadMessage copyWith({bool? isPending, bool? isFailed}) => ThreadMessage(
+        id: id,
+        senderId: senderId,
+        senderName: senderName,
+        body: body,
+        sentAt: sentAt,
+        isPending: isPending ?? this.isPending,
+        isFailed: isFailed ?? this.isFailed,
+      );
+}
+
+class ThreadMessagesPage {
+  final List<ThreadMessage> messages;
+  final DateTime? otherLastReadAt;
+  const ThreadMessagesPage({required this.messages, required this.otherLastReadAt});
 }
 
 class ThreadsRepository {
@@ -201,14 +221,19 @@ class ThreadsRepository {
 
   // `before`: id del mensaje más antiguo ya cargado, para pedir la página
   // anterior. Sin él, trae los más recientes.
-  Future<List<ThreadMessage>> getMessages(String threadId, {String? before}) async {
+  Future<ThreadMessagesPage> getMessages(String threadId, {String? before}) async {
     final r = await _client.get(
       'threads/$threadId/messages',
       queryParams: before != null ? {'before': before} : null,
     );
-    return (r.data as List<dynamic>)
-        .map((e) => ThreadMessage.fromJson(e as Map<String, dynamic>))
-        .toList();
+    final data = r.data as Map<String, dynamic>;
+    final otherLastReadAt = data['otherLastReadAt'] as String?;
+    return ThreadMessagesPage(
+      messages: (data['messages'] as List<dynamic>)
+          .map((e) => ThreadMessage.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      otherLastReadAt: otherLastReadAt != null ? DateTime.parse(otherLastReadAt) : null,
+    );
   }
 
   Future<void> sendMessage(String threadId, String body) async {

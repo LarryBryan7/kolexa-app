@@ -382,30 +382,36 @@ export class ThreadsService {
     userId: bigint,
     before?: bigint,
     limit = 30,
-  ): Promise<ThreadMessageView[]> {
+  ): Promise<{ messages: ThreadMessageView[]; otherLastReadAt: Date | null }> {
     await this.assertParticipant(threadId, userId);
 
-    const rows = await this.prisma.threadMessage.findMany({
-      where: {
-        threadId,
-        deletedAt: null,
-        ...(before ? { id: { lt: before } } : {}),
-      },
-      orderBy: { id: 'desc' },
-      take: limit,
-      select: {
-        id: true,
-        senderId: true,
-        body: true,
-        sentAt: true,
-        editedAt: true,
-        sender: { select: { firstName: true, lastName: true } },
-      },
-    });
+    const [rows, otherParticipant] = await Promise.all([
+      this.prisma.threadMessage.findMany({
+        where: {
+          threadId,
+          deletedAt: null,
+          ...(before ? { id: { lt: before } } : {}),
+        },
+        orderBy: { id: 'desc' },
+        take: limit,
+        select: {
+          id: true,
+          senderId: true,
+          body: true,
+          sentAt: true,
+          editedAt: true,
+          sender: { select: { firstName: true, lastName: true } },
+        },
+      }),
+      this.prisma.threadParticipant.findFirst({
+        where: { threadId, userId: { not: userId } },
+        select: { lastReadAt: true },
+      }),
+    ]);
 
     // Se pidieron descendente (para el cursor "antes de X"), se devuelven en
     // orden cronológico para pintarlas directo en la pantalla.
-    return rows.reverse().map((m) => ({
+    const messages = rows.reverse().map((m) => ({
       id: m.id.toString(),
       senderId: m.senderId.toString(),
       senderName: `${m.sender.firstName} ${m.sender.lastName ?? ''}`.trim(),
@@ -413,6 +419,8 @@ export class ThreadsService {
       sentAt: m.sentAt,
       editedAt: m.editedAt,
     }));
+
+    return { messages, otherLastReadAt: otherParticipant?.lastReadAt ?? null };
   }
 
   private static readonly MENTION_RE = /@\[(.*?)\]\((homework|gc-coursework):(\d+)\)/g;
