@@ -846,7 +846,7 @@ export class AuthService {
     return { accessToken, refreshToken };
   }
 
-  private async savePushToken(userId: bigint, token: string) {
+  async savePushToken(userId: bigint, token: string) {
     await this.prisma.pushToken.upsert({
       where: { token },
       create: { userId, token, platform: 'android' },

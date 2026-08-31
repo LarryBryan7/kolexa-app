@@ -124,6 +124,8 @@ class PushNotificationsService {
   Future<void> _refreshToken() async {
     try {
       _fcmToken = await _messaging.getToken();
+      final token = _fcmToken;
+      if (token != null) onTokenRefresh?.call(token);
     } catch (_) {
       // Sin Google Play Services (emuladores sin GMS) — ignorar
     }

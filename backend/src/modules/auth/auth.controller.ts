@@ -74,6 +74,18 @@ export class AuthController {
     return this.authService.logout(BigInt(user.sub), firebaseToken, refreshToken);
   }
 
+  // ── POST /api/v1/auth/push-token ───────────────────────
+  @Post('push-token')
+  @HttpCode(HttpStatus.OK)
+  async syncPushToken(
+    @CurrentUser() user: UserPayload,
+    @Body('firebaseToken') firebaseToken?: string,
+  ) {
+    if (!firebaseToken) return { ok: false };
+    await this.authService.savePushToken(BigInt(user.sub), firebaseToken);
+    return { ok: true };
+  }
+
   // ── POST /api/v1/auth/change-password ─────────────────
   @Post('change-password')
   @HttpCode(HttpStatus.OK)

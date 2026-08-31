@@ -36,6 +36,11 @@ class AuthRemoteDataSource {
     return LoginResponse.fromJson(response.data as Map<String, dynamic>);
   }
 
+  // ── syncPushToken ─────────────────────────────────────────
+  Future<void> syncPushToken(String firebaseToken) async {
+    await _client.post('auth/push-token', data: {'firebaseToken': firebaseToken});
+  }
+
   // ── loginWithGoogle ───────────────────────────────────────
   Future<LoginResponse> loginWithGoogle({
     required String idToken,

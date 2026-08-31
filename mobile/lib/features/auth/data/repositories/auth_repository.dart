@@ -33,6 +33,12 @@ class AuthRepository {
     return loginResponse.user;
   }
 
+  Future<void> syncPushToken(String firebaseToken) async {
+    try {
+      await _remoteDataSource.syncPushToken(firebaseToken);
+    } catch (_) {}
+  }
+
   // ── loginWithGoogle ───────────────────────────────────────
   // Inicio de sesión/registro con Google Sign-In (Fase 1).
   // Recibe el ID Token de Google, lo envía al backend y guarda la sesión.

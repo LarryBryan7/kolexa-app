@@ -55,6 +55,8 @@ class _KolexaAppState extends State<KolexaApp> {
     _classroomBloc = ClassroomBloc(ClassroomRepository(_apiClient));
 
     PushNotificationsService.instance.onNotificationTap = _handleNotificationTap;
+
+    PushNotificationsService.instance.onTokenRefresh = authRepository.syncPushToken;
   }
 
   // Decide a dónde navegar cuando el usuario toca una notificación.
