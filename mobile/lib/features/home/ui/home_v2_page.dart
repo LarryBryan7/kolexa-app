@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/services/push_notifications_service.dart';
 import '../../../core/widgets/notification_banner.dart';
+import '../../../core/widgets/press_tint.dart';
 import '../../auth/bloc/auth_bloc.dart';
 import '../../auth/bloc/auth_state.dart';
 import '../../notifications/ui/notification_onboarding_page.dart';
@@ -99,60 +100,6 @@ class _Child {
     this.age,
     this.avatarUrl,
   });
-}
-
-Color _pressedTint(Color base) {
-  final hsl = HSLColor.fromColor(base);
-  return hsl
-      .withSaturation((hsl.saturation * 0.65).clamp(0.0, 1.0))
-      .withLightness((hsl.lightness * 0.85).clamp(0.0, 1.0))
-      .toColor()
-      .withValues(alpha: 0.35);
-}
-
-class _PressTint extends StatefulWidget {
-  final Widget child;
-  final Color tintColor;
-  final BorderRadius borderRadius;
-  final VoidCallback? onTap;
-
-  const _PressTint({
-    required this.child,
-    required this.tintColor,
-    required this.borderRadius,
-    this.onTap,
-  });
-
-  @override
-  State<_PressTint> createState() => _PressTintState();
-}
-
-class _PressTintState extends State<_PressTint> {
-  bool _pressed = false;
-
-  void _setPressed(bool value) {
-    if (_pressed != value) setState(() => _pressed = value);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: widget.onTap,
-      onTapDown: (_) => _setPressed(true),
-      onTapUp: (_) => _setPressed(false),
-      onTapCancel: () => _setPressed(false),
-      child: AnimatedContainer(
-        duration: Duration(milliseconds: _pressed ? 0 : 350),
-        curve: Curves.easeOut,
-        decoration: BoxDecoration(
-          color: _pressed ? widget.tintColor : widget.tintColor.withValues(alpha: 0),
-          borderRadius: widget.borderRadius,
-        ),
-        child: widget.child,
-      ),
-    );
-  }
 }
 
 String _initials(String first, String last) {
@@ -1268,9 +1215,9 @@ class _NovedadesCardState extends State<_NovedadesCard>
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
       ),
-      child: _PressTint(
+      child: PressTint(
         borderRadius: BorderRadius.circular(20),
-      tintColor: _pressedTint(Colors.white),
+      tintColor: pressedTint(Colors.white),
       onTap: _openDetail,
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -1866,11 +1813,11 @@ class _UrgentCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: const Color(0xFFFAD973), width: 1.2),
       ),
-      child: _PressTint(
+      child: PressTint(
         borderRadius: BorderRadius.circular(20),
       // Ámbar más saturado que el fondo (que es un crema muy pálido) —
       // así el "presionado" se ve como un ámbar apagado, no gris puro.
-      tintColor: _pressedTint(const Color(0xFFFAD973)),
+      tintColor: pressedTint(const Color(0xFFFAD973)),
       onTap: () => Navigator.of(context, rootNavigator: true).push(
         MaterialPageRoute(
           builder: (_) => PendientesPage(
@@ -2023,9 +1970,9 @@ class _EstaSemanRowState extends State<_EstaSemanRow> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
       ),
-      child: _PressTint(
+      child: PressTint(
         borderRadius: BorderRadius.circular(20),
-      tintColor: _pressedTint(Colors.white),
+      tintColor: pressedTint(Colors.white),
       onTap: () => Navigator.push(
         context,
         MaterialPageRoute(
@@ -2123,9 +2070,9 @@ class _AccesosRapidos extends StatelessWidget {
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
         ),
-        child: _PressTint(
+        child: PressTint(
           borderRadius: BorderRadius.circular(16),
-          tintColor: _pressedTint(Colors.white),
+          tintColor: pressedTint(Colors.white),
           // TODO: sin destino todavía — solo feedback visual al tocar.
           onTap: () {},
           child: Padding(

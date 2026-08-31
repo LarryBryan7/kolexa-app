@@ -8,6 +8,7 @@ import '../../../core/api/api_client.dart';
 import '../../../core/theme/app_sizes.dart';
 import '../../../core/services/push_notifications_service.dart';
 import '../../../core/widgets/notification_banner.dart';
+import '../../../core/widgets/press_tint.dart';
 import '../../notifications/ui/notification_onboarding_page.dart';
 import '../../auth/bloc/auth_bloc.dart';
 import '../../auth/bloc/auth_event.dart';
@@ -92,6 +93,8 @@ class _HomeDocentePageState extends State<HomeDocentePage>
   late Future<List<ScheduleSlot>> _scheduleFuture;
   bool _waitingClassroomConfirm = false;
   bool _refreshing = false;
+
+  void _goToChats() => setState(() => _navIndex = 1);
 
   @override
   void initState() {
@@ -408,7 +411,10 @@ class _HomeDocentePageState extends State<HomeDocentePage>
                                           return Column(
                                             crossAxisAlignment: CrossAxisAlignment.start,
                                             children: [
-                                              _PendientesDocenteCard(pendingCount: count),
+                                              _PendientesDocenteCard(
+                                                pendingCount: count,
+                                                onTap: _goToChats,
+                                              ),
                                               const SizedBox(height: 12),
                                             ],
                                           );
@@ -432,7 +438,7 @@ class _HomeDocentePageState extends State<HomeDocentePage>
                                     color: _kTextGray,
                                   )),
                               const SizedBox(height: 10),
-                              const _AccesosRapidosDocente(),
+                              _AccesosRapidosDocente(onItemTap: _goToChats),
                               const SizedBox(height: 12),
 
                             ],
@@ -845,7 +851,8 @@ class _MiniClaseChip extends StatelessWidget {
 // Card: pendientes (tareas, reuniones, y más)
 class _PendientesDocenteCard extends StatelessWidget {
   final int pendingCount;
-  const _PendientesDocenteCard({required this.pendingCount});
+  final VoidCallback onTap;
+  const _PendientesDocenteCard({required this.pendingCount, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -853,12 +860,18 @@ class _PendientesDocenteCard extends StatelessWidget {
     final label = '$pendingCount pendientes esta semana';
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
       ),
-      child: Row(
+      child: PressTint(
+        onTap: onTap,
+        tintColor: pressedTint(Colors.white),
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
         children: [
           Container(
             width: sizes.circleIconNovedades,
@@ -892,6 +905,8 @@ class _PendientesDocenteCard extends StatelessWidget {
           ),
           Icon(Icons.chevron_right, color: _kChevron, size: sizes.iconChevron),
         ],
+        ),
+        ),
       ),
     );
   }
@@ -939,7 +954,8 @@ class _AvisoBanner extends StatelessWidget {
 
 // Accesos rápidos (2 filas × 3)
 class _AccesosRapidosDocente extends StatelessWidget {
-  const _AccesosRapidosDocente();
+  final VoidCallback onItemTap;
+  const _AccesosRapidosDocente({required this.onItemTap});
 
   static const _items = [
     (Icons.calendar_month_outlined, 'Plan semanal'),
@@ -966,27 +982,35 @@ class _AccesosRapidosDocente extends StatelessWidget {
     return Expanded(
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 4),
-        padding: const EdgeInsets.symmetric(vertical: 14),
+        clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
         ),
-        child: Column(
-          children: [
-            Container(
-              width: sizes.circleIconAccesos,
-              height: sizes.circleIconAccesos,
-              decoration: const BoxDecoration(
-                color: _kPrimaryLt,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(item.$1, size: sizes.glyphAccesos, color: _kPrimary),
+        child: PressTint(
+          onTap: onItemTap,
+          tintColor: pressedTint(Colors.white),
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            child: Column(
+              children: [
+                Container(
+                  width: sizes.circleIconAccesos,
+                  height: sizes.circleIconAccesos,
+                  decoration: const BoxDecoration(
+                    color: _kPrimaryLt,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(item.$1, size: sizes.glyphAccesos, color: _kPrimary),
+                ),
+                const SizedBox(height: 8),
+                Text(item.$2,
+                    style: TextStyle(
+                        fontSize: sizes.textLabelAccesos, color: _kTextDark)),
+              ],
             ),
-            const SizedBox(height: 8),
-            Text(item.$2,
-                style: TextStyle(
-                    fontSize: sizes.textLabelAccesos, color: _kTextDark)),
-          ],
+          ),
         ),
       ),
     );
