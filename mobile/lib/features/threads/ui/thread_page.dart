@@ -341,8 +341,18 @@ class _ThreadPageState extends State<ThreadPage> with WidgetsBindingObserver {
     try {
       await _repo.sendMessage(widget.threadId, body);
       if (!mounted) return;
-      setState(() => _pendingMessages = _pendingMessages.where((m) => m.id != tempId).toList());
-      await _load(forceScroll: true);
+      try {
+        final page = await _repo.getMessages(widget.threadId);
+        _cache[widget.threadId] = page;
+        if (!mounted) return;
+        setState(() {
+          _messages = page.messages;
+          _otherLastReadAt = page.otherLastReadAt;
+          _pendingMessages = _pendingMessages.where((m) => m.id != tempId).toList();
+        });
+      } catch (_) {
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
     } catch (e) {
       if (!mounted) return;
       setState(() {
