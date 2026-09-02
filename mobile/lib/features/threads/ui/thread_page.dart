@@ -186,6 +186,11 @@ class ThreadPage extends StatefulWidget {
       otherLastActiveAt: existing?.otherLastActiveAt,
     );
   }
+
+  static void clearCache() => _ThreadPageState._cache.clear();
+
+  @visibleForTesting
+  static Map<String, ThreadMessagesPage> get debugCache => _ThreadPageState._cache;
 }
 
 class _ThreadPageState extends State<ThreadPage> with WidgetsBindingObserver {

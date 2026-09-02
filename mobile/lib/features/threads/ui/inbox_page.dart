@@ -71,6 +71,14 @@ class InboxPage extends StatefulWidget {
 
   @override
   State<InboxPage> createState() => _InboxPageState();
+
+  static void clearCache() => _InboxPageState._cachedThreads = null;
+
+  @visibleForTesting
+  static List<ThreadSummary>? get debugCachedThreads => _InboxPageState._cachedThreads;
+
+  @visibleForTesting
+  static set debugCachedThreads(List<ThreadSummary>? value) => _InboxPageState._cachedThreads = value;
 }
 
 enum _InboxFilter { mensajes, comunicados, reuniones }
