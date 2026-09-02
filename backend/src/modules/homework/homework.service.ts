@@ -135,35 +135,28 @@ export class HomeworkService {
 
   // ── getStudentHomework ────────────────────────────────────
   async getStudentHomework(studentId: number, user: UserPayload) {
-    const student = await this.prisma.student.findUnique({
-      where: { id: studentId },
-      select: { schoolId: true },
-    });
-    if (!student) throw new NotFoundException('Alumno no encontrado');
-
-    if (!isSchoolAdminOf(user, student.schoolId)) {
-      // Verificar que el padre tiene acceso a este alumno
-      const relationship = await this.prisma.userStudent.findFirst({
-        where: { userId: user.sub, studentId },
-      });
-      if (!relationship) {
-        throw new ForbiddenException('No tienes acceso a las tareas de este alumno');
-      }
-    }
-
-    return this.prisma.studentHomework.findMany({
-      where: { studentId },
-      include: {
-        homework: {
-          include: {
-            course: { select: { name: true } },
-            classroom: { select: { name: true, grade: true, section: true } },
-            teacher: { select: { firstName: true, lastName: true } },
+    const [student, relationship, homework] = await Promise.all([
+      this.prisma.student.findUnique({ where: { id: studentId }, select: { schoolId: true } }),
+      this.prisma.userStudent.findFirst({ where: { userId: user.sub, studentId } }),
+      this.prisma.studentHomework.findMany({
+        where: { studentId },
+        include: {
+          homework: {
+            include: {
+              course: { select: { name: true } },
+              classroom: { select: { name: true, grade: true, section: true } },
+              teacher: { select: { firstName: true, lastName: true } },
+            },
           },
         },
-      },
-      orderBy: { homework: { dueDate: 'asc' } },
-    });
+        orderBy: { homework: { dueDate: 'asc' } },
+      }),
+    ]);
+    if (!student) throw new NotFoundException('Alumno no encontrado');
+    if (!isSchoolAdminOf(user, student.schoolId) && !relationship) {
+      throw new ForbiddenException('No tienes acceso a las tareas de este alumno');
+    }
+    return homework;
   }
 
   // ── updateHomework ────────────────────────────────────────

@@ -127,28 +127,24 @@ export class PickupService {
   // Historial de recojos de un alumno. Lo ve el padre, o el director
   // (school_admin) del mismo colegio del alumno.
   async getPickupHistory(studentId: number, user: UserPayload, limit = 30) {
-    const student = await this.prisma.student.findUnique({
-      where: { id: studentId },
-      select: { schoolId: true },
-    });
-    if (!student) throw new NotFoundException('Alumno no encontrado');
-
-    if (!isSchoolAdminOf(user, student.schoolId)) {
-      const rel = await this.prisma.userStudent.findFirst({
-        where: { userId: user.sub, studentId },
-      });
-      if (!rel) throw new ForbiddenException('No tienes acceso al historial de este alumno');
-    }
-
-    return this.prisma.pickupEvent.findMany({
-      where: { studentId },
-      include: {
-        authorizedPickup: {
-          select: { fullName: true, relationship: true, photoUrl: true },
+    const [student, rel, events] = await Promise.all([
+      this.prisma.student.findUnique({ where: { id: studentId }, select: { schoolId: true } }),
+      this.prisma.userStudent.findFirst({ where: { userId: user.sub, studentId } }),
+      this.prisma.pickupEvent.findMany({
+        where: { studentId },
+        include: {
+          authorizedPickup: {
+            select: { fullName: true, relationship: true, photoUrl: true },
+          },
         },
-      },
-      orderBy: { pickedUpAt: 'desc' },
-      take: limit,
-    });
+        orderBy: { pickedUpAt: 'desc' },
+        take: limit,
+      }),
+    ]);
+    if (!student) throw new NotFoundException('Alumno no encontrado');
+    if (!isSchoolAdminOf(user, student.schoolId) && !rel) {
+      throw new ForbiddenException('No tienes acceso al historial de este alumno');
+    }
+    return events;
   }
 }

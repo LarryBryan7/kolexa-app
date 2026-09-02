@@ -141,29 +141,24 @@ export class PaymentsService {
   // Estado financiero de un alumno: qué debe, qué pagó.
   // Lo ve el padre, o el director (school_admin) del mismo colegio.
   async getStudentObligations(studentId: number, user: UserPayload) {
-    const student = await this.prisma.student.findUnique({
-      where: { id: studentId },
-      select: { schoolId: true },
-    });
-    if (!student) throw new NotFoundException('Alumno no encontrado');
-
-    if (!isSchoolAdminOf(user, student.schoolId)) {
-      const rel = await this.prisma.userStudent.findFirst({
-        where: { userId: user.sub, studentId },
-      });
-      if (!rel) throw new ForbiddenException('No tienes acceso a los pagos de este alumno');
-    }
-
-    const obligations = await this.prisma.paymentObligation.findMany({
-      where: { studentId },
-      include: {
-        concept: { select: { name: true, description: true } },
-        payments: {
-          select: { amountPaid: true, paidAt: true, paymentMethod: true },
+    const [student, rel, obligations] = await Promise.all([
+      this.prisma.student.findUnique({ where: { id: studentId }, select: { schoolId: true } }),
+      this.prisma.userStudent.findFirst({ where: { userId: user.sub, studentId } }),
+      this.prisma.paymentObligation.findMany({
+        where: { studentId },
+        include: {
+          concept: { select: { name: true, description: true } },
+          payments: {
+            select: { amountPaid: true, paidAt: true, paymentMethod: true },
+          },
         },
-      },
-      orderBy: { dueDate: 'asc' },
-    });
+        orderBy: { dueDate: 'asc' },
+      }),
+    ]);
+    if (!student) throw new NotFoundException('Alumno no encontrado');
+    if (!isSchoolAdminOf(user, student.schoolId) && !rel) {
+      throw new ForbiddenException('No tienes acceso a los pagos de este alumno');
+    }
 
     // Totales para el resumen financiero
     const totalOwed = obligations

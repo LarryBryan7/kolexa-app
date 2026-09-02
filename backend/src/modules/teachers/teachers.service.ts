@@ -31,7 +31,7 @@ export class TeachersService {
     const todayDate = new Date(todayStr);
 
     // ── Optimización (P2-7): lanzar en paralelo las queries independientes ──
-    const [classroomRows, session, token] = await Promise.all([
+    const [classroomRows, session, token, myClassroomCourses] = await Promise.all([
       // Salones donde el docente tiene al menos un curso asignado
       this.prisma.$queryRaw<
         { id: bigint; name: string; grade: string; section: string; student_count: bigint }[]
@@ -58,8 +58,10 @@ export class TeachersService {
         where: { userId },
         select: { id: true },
       }),
+      this.prisma.classroomCourse.findMany({ where: { teacherId: userId }, select: { id: true } }),
     ]);
     const connected = !!token;
+    const myClassroomCourseIds = myClassroomCourses.map((r) => r.id);
 
     const classrooms = classroomRows.map((r) => ({
       id: Number(r.id),
@@ -78,11 +80,7 @@ export class TeachersService {
           classroomIds.length > 0
             ? {
                 classroomId: { in: classroomIds },
-                classroomCourseId: {
-                  in: await this.prisma.classroomCourse
-                    .findMany({ where: { teacherId: userId }, select: { id: true } })
-                    .then((rows) => rows.map((r) => r.id)),
-                },
+                classroomCourseId: { in: myClassroomCourseIds },
               }
             : {},
         ],
