@@ -17,6 +17,7 @@ import '../../homework/bloc/homework_bloc.dart';
 import '../../homework/data/datasources/homework_remote_datasource.dart';
 import '../../homework/data/repositories/homework_repository.dart';
 import '../../homework/ui/homework_page.dart';
+import '../data/threads_local_store.dart';
 import '../data/threads_repository.dart';
 
 const _kBg = Color(0xFFF7F6F3);
@@ -218,6 +219,7 @@ class _ThreadPageState extends State<ThreadPage> with WidgetsBindingObserver {
     _messages = _cache[widget.threadId]?.messages;
     _otherLastReadAt = _cache[widget.threadId]?.otherLastReadAt;
     _otherLastActiveAt = _cache[widget.threadId]?.otherLastActiveAt;
+    if (_messages == null || _isOnlySeed(_messages)) _loadFromDisk();
     _load();
     // Se marca leído al entrar: si el otro responde mientras se lee, el
     // siguiente refresh de la bandeja ya no lo mostrará como pendiente.
@@ -248,11 +250,38 @@ class _ThreadPageState extends State<ThreadPage> with WidgetsBindingObserver {
     }
   }
 
+  bool _isOnlySeed(List<ThreadMessage>? messages) =>
+      messages != null && messages.isNotEmpty && messages.every((m) => m.id.startsWith('preview-'));
+
+  Future<void> _loadFromDisk() async {
+    final local = await ThreadsLocalStore.loadThread(widget.threadId);
+    if (!mounted || local == null) return;
+    final hasRealData = _messages != null && !_isOnlySeed(_messages);
+    if (hasRealData) return; // la red (u otra carga) ya trajo algo real
+    final seed = (_messages ?? []).where((m) => m.id.startsWith('preview-'));
+    final lastDiskSentAt = local.messages.isNotEmpty ? local.messages.last.sentAt : null;
+    final keptSeed =
+        seed.where((s) => lastDiskSentAt == null || s.sentAt.isAfter(lastDiskSentAt)).toList();
+    final merged = ThreadMessagesPage(
+      messages: [...local.messages, ...keptSeed],
+      otherLastReadAt: local.otherLastReadAt,
+      otherLastActiveAt: local.otherLastActiveAt,
+    );
+    _cache[widget.threadId] = merged;
+    setState(() {
+      _messages = merged.messages;
+      _otherLastReadAt = merged.otherLastReadAt;
+      _otherLastActiveAt = merged.otherLastActiveAt;
+      _loadingFirstTime = false;
+    });
+  }
+
   Future<void> _load({bool forceScroll = false}) async {
     if (_messages == null) setState(() => _loadingFirstTime = true);
     try {
       final page = await _repo.getMessages(widget.threadId);
       _cache[widget.threadId] = page;
+      ThreadsLocalStore.saveThread(widget.threadId, page);
       if (!mounted) return;
       setState(() {
         _messages = page.messages;
@@ -424,6 +453,7 @@ class _ThreadPageState extends State<ThreadPage> with WidgetsBindingObserver {
         otherLastReadAt: _otherLastReadAt,
         otherLastActiveAt: _otherLastActiveAt,
       );
+      ThreadsLocalStore.saveMessage(widget.threadId, confirmed);
       WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
     } catch (e) {
       if (!mounted) return;

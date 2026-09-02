@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/utils/cached_avatar.dart';
+import '../data/threads_local_store.dart';
 import '../data/threads_repository.dart';
 import 'thread_page.dart';
 
@@ -33,7 +34,15 @@ class _NewMessagePageState extends State<NewMessagePage> {
     super.initState();
     _repo = ThreadsRepository(context.read<ApiClient>());
     _contacts = _cachedContacts;
+    if (_contacts == null) _loadFromDisk();
     _refresh(showErrorIfEmpty: true);
+  }
+
+  Future<void> _loadFromDisk() async {
+    final local = await ThreadsLocalStore.loadContacts();
+    if (!mounted || local.isEmpty || _contacts != null) return;
+    _cachedContacts = local;
+    setState(() => _contacts = local);
   }
 
   Future<void> _refresh({bool showErrorIfEmpty = false}) async {
@@ -41,6 +50,7 @@ class _NewMessagePageState extends State<NewMessagePage> {
     try {
       final contacts = await _repo.getContacts();
       _cachedContacts = contacts;
+      ThreadsLocalStore.saveContacts(contacts);
       if (!mounted) return;
       setState(() {
         _contacts = contacts;
