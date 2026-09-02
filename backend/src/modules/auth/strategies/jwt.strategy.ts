@@ -29,6 +29,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   private static readonly ACTIVE_CACHE_TTL_MS = 30_000;
   private readonly activeUserCache = new Map<string, { email: string; expiresAt: number }>();
 
+  private static readonly ACTIVE_WRITE_THROTTLE_MS = 60_000;
+  private readonly lastActiveWriteCache = new Map<string, number>();
+
   async validate(payload: any): Promise<UserPayload> {
     const userId = BigInt(payload.sub);
     const cacheKey = String(payload.sub);
@@ -61,6 +64,16 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         email,
         expiresAt: now + JwtStrategy.ACTIVE_CACHE_TTL_MS,
       });
+    }
+
+    // Fire-and-forget, nunca bloquea el request: si esta escritura falla o
+    // tarda, no debe afectar la respuesta real que pidió el usuario.
+    const lastWrite = this.lastActiveWriteCache.get(cacheKey) ?? 0;
+    if (now - lastWrite > JwtStrategy.ACTIVE_WRITE_THROTTLE_MS) {
+      this.lastActiveWriteCache.set(cacheKey, now);
+      this.prisma.user
+        .update({ where: { id: userId }, data: { lastActiveAt: new Date() } })
+        .catch(() => {});
     }
 
     let schoolId: bigint | undefined;
