@@ -146,6 +146,9 @@ class _InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
   }
 
   Future<void> _openThread(ThreadSummary t) async {
+    if (t.lastMessage != null) {
+      ThreadPage.seedLastMessage(t.id, t.lastMessage!);
+    }
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => ThreadPage(
@@ -158,6 +161,15 @@ class _InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
         ),
       ),
     );
+    if (!mounted) return;
+    final current = _threads;
+    if (current != null) {
+      final updated = current
+          .map((s) => s.id == t.id ? s.copyWith(unread: false, unreadCount: 0) : s)
+          .toList();
+      _cachedThreads = updated;
+      setState(() => _threads = updated);
+    }
     await _onRefresh();
   }
 

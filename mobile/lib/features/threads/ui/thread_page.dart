@@ -177,6 +177,24 @@ class ThreadPage extends StatefulWidget {
 
   @override
   State<ThreadPage> createState() => _ThreadPageState();
+
+  static void seedLastMessage(String threadId, ThreadPreview preview) {
+    final existing = _ThreadPageState._cache[threadId];
+    final lastCached = existing?.messages.isNotEmpty == true ? existing!.messages.last : null;
+    if (lastCached != null && !preview.sentAt.isAfter(lastCached.sentAt)) return;
+    final synthetic = ThreadMessage(
+      id: 'preview-${preview.sentAt.microsecondsSinceEpoch}',
+      senderId: preview.senderId,
+      senderName: '',
+      body: preview.body,
+      sentAt: preview.sentAt,
+    );
+    _ThreadPageState._cache[threadId] = ThreadMessagesPage(
+      messages: [...(existing?.messages ?? []), synthetic],
+      otherLastReadAt: existing?.otherLastReadAt,
+      otherLastActiveAt: existing?.otherLastActiveAt,
+    );
+  }
 }
 
 class _ThreadPageState extends State<ThreadPage> with WidgetsBindingObserver {

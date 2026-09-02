@@ -621,7 +621,24 @@ export class ThreadsService {
       where: { threadId_userId: { threadId, userId } },
       data: { lastReadAt: new Date() },
     });
+    this.notifyReadReceipt(threadId, userId).catch(() => {});
     return { ok: true };
+  }
+
+  private async notifyReadReceipt(threadId: bigint, readerId: bigint) {
+    const others = await this.prisma.threadParticipant.findMany({
+      where: { threadId, userId: { not: readerId } },
+      select: { userId: true },
+    });
+    await Promise.all(
+      others.map((p) =>
+        this.notifications.sendSilentRefresh(p.userId, {
+          screen: 'thread',
+          threadId: threadId.toString(),
+          refresh: 'true',
+        }),
+      ),
+    );
   }
 
   async setMuted(threadId: bigint, userId: bigint, muted: boolean) {
