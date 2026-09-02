@@ -88,8 +88,12 @@ class _HomeDocentePageState extends State<HomeDocentePage>
     with WidgetsBindingObserver {
   int _navIndex = 0;
   late Future<TeacherHomeData> _homeDataFuture;
+  TeacherHomeData? _lastHomeData;
   late Future<bool> _classroomStatusFuture;
   late Future<int> _pendingFuture;
+  int? _lastPendingCount;
+  bool? _lastConnected;
+  List<ScheduleSlot>? _lastSchedule; // mismo patrón, ver _lastPendingCount
   late Future<List<ScheduleSlot>> _scheduleFuture;
   bool _waitingClassroomConfirm = false;
   bool _refreshing = false;
@@ -307,7 +311,8 @@ class _HomeDocentePageState extends State<HomeDocentePage>
                     child: FutureBuilder<TeacherHomeData>(
                       future: _homeDataFuture,
                       builder: (context, snapshot) {
-                        final data = snapshot.data;
+                        if (snapshot.hasData) _lastHomeData = snapshot.data;
+                        final data = _lastHomeData;
                         final classroom = data?.classrooms.length == 1
                             ? data!.classrooms.first
                             : null;
@@ -383,10 +388,13 @@ class _HomeDocentePageState extends State<HomeDocentePage>
                                 const SizedBox(height: 10),
                                 FutureBuilder<List<ScheduleSlot>>(
                                   future: _scheduleFuture,
-                                  builder: (ctx, sSnap) => _HorarioRow(
-                                    slots: sSnap.data ?? [],
-                                    now: now,
-                                  ),
+                                  builder: (ctx, sSnap) {
+                                    if (sSnap.hasData) _lastSchedule = sSnap.data;
+                                    return _HorarioRow(
+                                      slots: _lastSchedule ?? [],
+                                      now: now,
+                                    );
+                                  },
                                 ),
                                 const SizedBox(height: 12),
                               ],
@@ -395,8 +403,8 @@ class _HomeDocentePageState extends State<HomeDocentePage>
                               FutureBuilder<bool>(
                                 future: _classroomStatusFuture,
                                 builder: (context, snap) {
-                                  if (snap.connectionState == ConnectionState.waiting ||
-                                      snap.data != true) {
+                                  if (snap.hasData) _lastConnected = snap.data;
+                                  if (_lastConnected != true) {
                                     return const SizedBox.shrink();
                                   }
                                   return Column(
@@ -406,7 +414,8 @@ class _HomeDocentePageState extends State<HomeDocentePage>
                                       FutureBuilder<int>(
                                         future: _pendingFuture,
                                         builder: (context, pendSnap) {
-                                          final count = pendSnap.data ?? 0;
+                                          if (pendSnap.hasData) _lastPendingCount = pendSnap.data;
+                                          final count = _lastPendingCount ?? 0;
                                           if (count == 0) return const SizedBox.shrink();
                                           return Column(
                                             crossAxisAlignment: CrossAxisAlignment.start,
