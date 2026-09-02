@@ -231,15 +231,20 @@ class _ThreadPageState extends State<ThreadPage> with WidgetsBindingObserver {
     _load();
     // Se marca leído al entrar: si el otro responde mientras se lee, el
     // siguiente refresh de la bandeja ya no lo mostrará como pendiente.
-    _repo.markRead(widget.threadId).catchError((_) {});
+    _markRead();
     WidgetsBinding.instance.addObserver(this);
     PushNotificationsService.instance.addDataRefreshListener(_handleDataRefresh);
+  }
+
+  void _markRead() {
+    _repo.markRead(widget.threadId).catchError((_) {});
   }
 
   void _handleDataRefresh(Map<String, dynamic> data) {
     if (!mounted) return;
     if (data['screen'] == 'thread' && data['threadId'] == widget.threadId) {
       _load();
+      _markRead();
     }
   }
 
@@ -247,7 +252,10 @@ class _ThreadPageState extends State<ThreadPage> with WidgetsBindingObserver {
   // al volver del background, se refresca igual.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _load();
+    if (state == AppLifecycleState.resumed) {
+      _load();
+      _markRead();
+    }
   }
 
   Future<void> _load({bool forceScroll = false}) async {
