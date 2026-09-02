@@ -194,6 +194,14 @@ class ThreadMessage {
       );
 }
 
+// Resultado de POST .../messages: solo lo que el backend realmente sabe
+// que el cliente no puede inventar (id real, sentAt real del servidor).
+class SentMessage {
+  final String id;
+  final DateTime sentAt;
+  const SentMessage({required this.id, required this.sentAt});
+}
+
 class ThreadMessagesPage {
   final List<ThreadMessage> messages;
   final DateTime? otherLastReadAt;
@@ -260,8 +268,13 @@ class ThreadsRepository {
     );
   }
 
-  Future<void> sendMessage(String threadId, String body) async {
-    await _client.post('threads/$threadId/messages', data: {'body': body});
+  Future<SentMessage> sendMessage(String threadId, String body) async {
+    final r = await _client.post('threads/$threadId/messages', data: {'body': body});
+    final data = r.data as Map<String, dynamic>;
+    return SentMessage(
+      id: data['id'] as String,
+      sentAt: DateTime.parse(data['sentAt'] as String),
+    );
   }
 
   // Autocompletado del "@" en el compositor: tareas del aula del alumno de

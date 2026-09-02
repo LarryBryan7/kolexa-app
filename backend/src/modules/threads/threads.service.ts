@@ -413,9 +413,8 @@ export class ThreadsService {
     otherLastReadAt: Date | null;
     otherLastActiveAt: Date | null;
   }> {
-    await this.assertParticipant(threadId, userId);
-
-    const [rows, otherParticipant] = await Promise.all([
+    const [, rows, otherParticipant] = await Promise.all([
+      this.assertParticipant(threadId, userId),
       this.prisma.threadMessage.findMany({
         where: {
           threadId,
