@@ -133,14 +133,14 @@ class _HomeDocentePageState extends State<HomeDocentePage>
         } catch (_) {}
       }
       if (!mounted) return;
-      setState(() {
-        _homeDataFuture = repo.getHomeData();
-        _classroomStatusFuture = _homeDataFuture.then((d) => d.connected);
-        if (home.connected && !cacheHit) {
-                _pendingFuture = repo.getPendingCount();
+      if (home.connected && !cacheHit) {
+        setState(() {
+          _homeDataFuture = repo.getHomeData();
+          _classroomStatusFuture = _homeDataFuture.then((d) => d.connected);
+          _pendingFuture = repo.getPendingCount();
           _scheduleFuture = repo.getTodaySchedule();
-        }
-      });
+        });
+      }
     } finally {
       _refreshing = false;
     }
