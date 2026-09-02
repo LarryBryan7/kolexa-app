@@ -18,6 +18,7 @@ export interface ThreadSummary {
   priority: string;
   lastMessageAt: Date;
   unread: boolean;
+  unreadCount: number;
   muted: boolean;
   otherParticipant: { id: string; name: string; avatar: string | null } | null;
   lastMessage: { body: string; senderId: string; sentAt: Date } | null;
@@ -96,6 +97,18 @@ export class ThreadsService {
       if (!lastByThread.has(key)) lastByThread.set(key, m);
     }
 
+    const otherMessages = await this.prisma.threadMessage.findMany({
+      where: { threadId: { in: threadIds }, deletedAt: null, senderId: { not: userId } },
+      select: { threadId: true, sentAt: true },
+    });
+    const sentAtsByThread = new Map<string, Date[]>();
+    for (const m of otherMessages) {
+      const key = m.threadId.toString();
+      const arr = sentAtsByThread.get(key);
+      if (arr) arr.push(m.sentAt);
+      else sentAtsByThread.set(key, [m.sentAt]);
+    }
+
     return parts
       .map((p) => {
         const t = p.thread;
@@ -112,6 +125,9 @@ export class ThreadsService {
           priority: t.priority,
           lastMessageAt: t.lastMessageAt,
           unread: !p.lastReadAt || p.lastReadAt < t.lastMessageAt,
+          unreadCount: (sentAtsByThread.get(t.id.toString()) ?? []).filter(
+            (sentAt) => !p.lastReadAt || sentAt > p.lastReadAt,
+          ).length,
           muted: !!p.mutedAt,
           otherParticipant: other
             ? {

@@ -100,6 +100,7 @@ class ThreadSummary {
   final String priority;
   final DateTime lastMessageAt;
   final bool unread;
+  final int unreadCount;
   final bool muted;
   final ThreadOtherParticipant? otherParticipant;
   final ThreadPreview? lastMessage;
@@ -113,6 +114,7 @@ class ThreadSummary {
     required this.priority,
     required this.lastMessageAt,
     required this.unread,
+    required this.unreadCount,
     required this.muted,
     this.otherParticipant,
     this.lastMessage,
@@ -128,6 +130,7 @@ class ThreadSummary {
       priority: json['priority'] as String,
       lastMessageAt: DateTime.parse(json['lastMessageAt'] as String),
       unread: json['unread'] as bool,
+      unreadCount: json['unreadCount'] as int? ?? 0,
       muted: json['muted'] as bool,
       otherParticipant: json['otherParticipant'] != null
           ? ThreadOtherParticipant.fromJson(json['otherParticipant'] as Map<String, dynamic>)
