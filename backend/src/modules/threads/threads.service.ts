@@ -570,26 +570,29 @@ export class ThreadsService {
       }
     }
 
-    const [message] = await this.prisma.$transaction([
-      this.prisma.threadMessage.create({
-        data: { threadId, senderId: userId, body },
-        select: { id: true, sentAt: true },
-      }),
-      this.prisma.thread.update({
-        where: { id: threadId },
-        data: { lastMessageAt: new Date() },
-      }),
-      // Quien escribe da por leído su propio mensaje: sin esto, el hilo le
-      // aparecería a él mismo como "sin leer" justo después de enviarlo.
-      this.prisma.threadParticipant.update({
-        where: { threadId_userId: { threadId, userId } },
-        data: { lastReadAt: new Date() },
-      }),
-    ]);
+    const [result] = await this.prisma.$queryRaw<{ id: string; sent_at: Date }[]>`
+      WITH new_message AS (
+        INSERT INTO thread_messages (thread_id, sender_id, body, sent_at)
+        VALUES (${threadId}, ${userId}, ${body}, now())
+        RETURNING id, sent_at
+      ),
+      thread_update AS (
+        UPDATE threads SET last_message_at = now() WHERE id = ${threadId}
+      )
+      -- Quien escribe da por leído su propio mensaje: sin esto, el hilo le
+      -- aparecería a él mismo como "sin leer" justo después de enviarlo.
+      UPDATE thread_participants
+      SET last_read_at = now()
+      WHERE thread_id = ${threadId} AND user_id = ${userId}
+      RETURNING
+        (SELECT id::text FROM new_message) AS id,
+        (SELECT sent_at FROM new_message) AS sent_at
+    `;
+    const message = { id: result.id, sentAt: result.sent_at };
 
     this.notifyOthers(threadId, userId, body).catch(() => {});
 
-    return { id: message.id.toString(), sentAt: message.sentAt };
+    return { id: message.id, sentAt: message.sentAt };
   }
 
   private async notifyOthers(threadId: bigint, senderId: bigint, body: string) {

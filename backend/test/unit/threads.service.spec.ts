@@ -31,6 +31,9 @@ function makePrisma(overrides: Record<string, any> = {}) {
       if (typeof arg === 'function') return arg(prisma);
       return Promise.all(arg);
     }),
+    // sendMessage usa una sola sentencia SQL cruda (INSERT + 2 UPDATE en
+    // CTEs) en vez de $transaction — ver comentario en threads.service.ts.
+    $queryRaw: jest.fn().mockResolvedValue([{ id: '999', sent_at: new Date('2026-01-01T00:00:00Z') }]),
     ...overrides,
   };
   return prisma;
@@ -162,7 +165,7 @@ describe('ThreadsService.openThread — aislamiento y permisos', () => {
       }),
     );
     expect(prisma.threadParticipant.createMany).toHaveBeenCalled();
-    expect(prisma.threadMessage.create).toHaveBeenCalled();
+    expect(prisma.$queryRaw).toHaveBeenCalled();
   });
 
   it('reutiliza un hilo existente en vez de crear uno nuevo', async () => {
@@ -573,10 +576,7 @@ describe('ThreadsService — acceso a un hilo por participación', () => {
         createMany: jest.fn(),
         update: jest.fn(),
       },
-      threadMessage: {
-        create: jest.fn().mockResolvedValue({ id: 9n, sentAt: new Date() }),
-        findMany: jest.fn(),
-      },
+      threadMessage: { create: jest.fn(), findMany: jest.fn() },
       thread: { update: jest.fn(), findFirst: jest.fn(), create: jest.fn() },
       user: { findUnique: jest.fn().mockResolvedValue({ firstName: 'Rosa', lastName: 'Quispe' }) },
     });
@@ -584,17 +584,32 @@ describe('ThreadsService — acceso a un hilo por participación', () => {
     await service.sendMessage(1n, PARENT.id, 'hola profe');
     await new Promise((resolve) => setImmediate(resolve));
 
-    expect(prisma.threadParticipant.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { threadId_userId: { threadId: 1n, userId: PARENT.id } },
-      }),
-    );
+    expect(prisma.$queryRaw).toHaveBeenCalled();
+    const queryRawArgs = (prisma.$queryRaw as jest.Mock).mock.calls[0];
+    expect(queryRawArgs).toEqual(expect.arrayContaining([1n, PARENT.id, 'hola profe']));
     expect(notifications.sendToUser).toHaveBeenCalledWith(
       TEACHER.id,
       expect.any(String),
       expect.any(String),
       expect.objectContaining({ screen: 'thread', threadId: '1' }),
     );
+  });
+
+  it('sendMessage devuelve el id/sentAt reales que vinieron de la fila del INSERT (via $queryRaw)', async () => {
+    const sentAt = new Date('2026-09-02T12:00:00.000Z');
+    const { service } = makeService({
+      threadParticipant: {
+        findUnique: jest.fn().mockResolvedValue({ thread: { closedAt: null } }),
+        findMany: jest.fn().mockResolvedValue([]),
+        createMany: jest.fn(),
+        update: jest.fn(),
+      },
+      $queryRaw: jest.fn().mockResolvedValue([{ id: '777', sent_at: sentAt }]),
+    });
+
+    const result = await service.sendMessage(1n, PARENT.id, 'hola');
+
+    expect(result).toEqual({ id: '777', sentAt });
   });
 
   it('no notifica al participante que silenció el hilo', async () => {
@@ -1012,7 +1027,7 @@ describe('ThreadsService — menciones de tareas (@)', () => {
     expect(prisma.homework.count).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ id: { in: [42n] }, classroomId: 900n }) }),
     );
-    expect(prisma.threadMessage.create).toHaveBeenCalled();
+    expect(prisma.$queryRaw).toHaveBeenCalled();
   });
 
   it('rechaza mencionar una tarea que no pertenece al aula del alumno del hilo', async () => {
@@ -1070,7 +1085,7 @@ describe('ThreadsService — menciones de tareas (@)', () => {
         where: expect.objectContaining({ id: { in: [7n] }, course: { studentId: STUDENT } }),
       }),
     );
-    expect(prisma.threadMessage.create).toHaveBeenCalled();
+    expect(prisma.$queryRaw).toHaveBeenCalled();
   });
 
   it('rechaza mencionar una tarea de Classroom que no pertenece al alumno del hilo', async () => {
