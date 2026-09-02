@@ -73,7 +73,7 @@ class InboxPage extends StatefulWidget {
 
 enum _InboxFilter { mensajes, comunicados, reuniones }
 
-class _InboxPageState extends State<InboxPage> {
+class _InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
   static List<ThreadSummary>? _cachedThreads;
 
   List<ThreadSummary>? _threads;
@@ -89,13 +89,20 @@ class _InboxPageState extends State<InboxPage> {
     _threads = _cachedThreads;
     _refresh(showErrorIfEmpty: true);
     PushNotificationsService.instance.addDataRefreshListener(_handleDataRefresh);
+    WidgetsBinding.instance.addObserver(this);
     _searchController.addListener(() {
       setState(() => _searchQuery = _searchController.text.trim().toLowerCase());
     });
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _refresh();
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     PushNotificationsService.instance.removeDataRefreshListener(_handleDataRefresh);
     _searchController.dispose();
     super.dispose();
