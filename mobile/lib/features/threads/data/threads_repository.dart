@@ -69,12 +69,19 @@ class ThreadPreview {
   final String body;
   final String senderId;
   final DateTime sentAt;
-  const ThreadPreview({required this.body, required this.senderId, required this.sentAt});
+  final bool delivered;
+  const ThreadPreview({
+    required this.body,
+    required this.senderId,
+    required this.sentAt,
+    this.delivered = false,
+  });
 
   factory ThreadPreview.fromJson(Map<String, dynamic> json) => ThreadPreview(
         body: json['body'] as String,
         senderId: json['senderId'] as String,
         sentAt: DateTime.parse(json['sentAt'] as String),
+        delivered: json['delivered'] as bool? ?? false,
       );
 }
 
@@ -190,7 +197,12 @@ class ThreadMessage {
 class ThreadMessagesPage {
   final List<ThreadMessage> messages;
   final DateTime? otherLastReadAt;
-  const ThreadMessagesPage({required this.messages, required this.otherLastReadAt});
+  final DateTime? otherLastActiveAt;
+  const ThreadMessagesPage({
+    required this.messages,
+    required this.otherLastReadAt,
+    required this.otherLastActiveAt,
+  });
 }
 
 class ThreadsRepository {
@@ -238,11 +250,13 @@ class ThreadsRepository {
     );
     final data = r.data as Map<String, dynamic>;
     final otherLastReadAt = data['otherLastReadAt'] as String?;
+    final otherLastActiveAt = data['otherLastActiveAt'] as String?;
     return ThreadMessagesPage(
       messages: (data['messages'] as List<dynamic>)
           .map((e) => ThreadMessage.fromJson(e as Map<String, dynamic>))
           .toList(),
       otherLastReadAt: otherLastReadAt != null ? DateTime.parse(otherLastReadAt) : null,
+      otherLastActiveAt: otherLastActiveAt != null ? DateTime.parse(otherLastActiveAt) : null,
     );
   }
 

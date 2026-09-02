@@ -21,7 +21,7 @@ export interface ThreadSummary {
   unreadCount: number;
   muted: boolean;
   otherParticipant: { id: string; name: string; avatar: string | null; online: boolean } | null;
-  lastMessage: { body: string; senderId: string; sentAt: Date } | null;
+  lastMessage: { body: string; senderId: string; sentAt: Date; delivered: boolean } | null;
 }
 
 export interface ThreadMessageView {
@@ -76,6 +76,7 @@ export class ThreadsService {
             participants: {
               where: { userId: { not: userId } },
               select: {
+                lastReadAt: true,
                 user: {
                   select: { id: true, firstName: true, lastName: true, avatar: true, lastActiveAt: true },
                 },
@@ -116,8 +117,13 @@ export class ThreadsService {
     return parts
       .map((p) => {
         const t = p.thread;
-        const other = t.participants[0]?.user ?? null;
+        const otherPart = t.participants[0] ?? null;
+        const other = otherPart?.user ?? null;
         const last = lastByThread.get(t.id.toString()) ?? null;
+        const delivered =
+          !!last &&
+          ((!!otherPart?.lastReadAt && otherPart.lastReadAt >= last.sentAt) ||
+            (!!other?.lastActiveAt && other.lastActiveAt >= last.sentAt));
         return {
           id: t.id.toString(),
           kind: t.kind,
@@ -142,7 +148,12 @@ export class ThreadsService {
               }
             : null,
           lastMessage: last
-            ? { body: this.stripMentions(last.body), senderId: last.senderId.toString(), sentAt: last.sentAt }
+            ? {
+                body: this.stripMentions(last.body),
+                senderId: last.senderId.toString(),
+                sentAt: last.sentAt,
+                delivered,
+              }
             : null,
         };
       })
@@ -403,7 +414,11 @@ export class ThreadsService {
     userId: bigint,
     before?: bigint,
     limit = 30,
-  ): Promise<{ messages: ThreadMessageView[]; otherLastReadAt: Date | null }> {
+  ): Promise<{
+    messages: ThreadMessageView[];
+    otherLastReadAt: Date | null;
+    otherLastActiveAt: Date | null;
+  }> {
     await this.assertParticipant(threadId, userId);
 
     const [rows, otherParticipant] = await Promise.all([
@@ -426,7 +441,7 @@ export class ThreadsService {
       }),
       this.prisma.threadParticipant.findFirst({
         where: { threadId, userId: { not: userId } },
-        select: { lastReadAt: true },
+        select: { lastReadAt: true, user: { select: { lastActiveAt: true } } },
       }),
     ]);
 
@@ -441,7 +456,11 @@ export class ThreadsService {
       editedAt: m.editedAt,
     }));
 
-    return { messages, otherLastReadAt: otherParticipant?.lastReadAt ?? null };
+    return {
+      messages,
+      otherLastReadAt: otherParticipant?.lastReadAt ?? null,
+      otherLastActiveAt: otherParticipant?.user?.lastActiveAt ?? null,
+    };
   }
 
   private static readonly MENTION_RE = /@\[(.*?)\]\((homework|gc-coursework):(\d+)\)/g;
