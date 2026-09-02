@@ -20,14 +20,39 @@ class NewMessagePage extends StatefulWidget {
 }
 
 class _NewMessagePageState extends State<NewMessagePage> {
+  static List<Contact>? _cachedContacts;
+
   late final ThreadsRepository _repo;
-  late Future<List<Contact>> _future;
+  List<Contact>? _contacts;
+  bool _loadingFirstTime = false;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
     _repo = ThreadsRepository(context.read<ApiClient>());
-    _future = _repo.getContacts();
+    _contacts = _cachedContacts;
+    _refresh(showErrorIfEmpty: true);
+  }
+
+  Future<void> _refresh({bool showErrorIfEmpty = false}) async {
+    if (_contacts == null) setState(() => _loadingFirstTime = true);
+    try {
+      final contacts = await _repo.getContacts();
+      _cachedContacts = contacts;
+      if (!mounted) return;
+      setState(() {
+        _contacts = contacts;
+        _error = null;
+        _loadingFirstTime = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loadingFirstTime = false);
+      if (showErrorIfEmpty && _contacts == null) {
+        setState(() => _error = e.toString().replaceFirst('Exception: ', ''));
+      }
+    }
   }
 
   Future<void> _pick(Contact c) async {
@@ -108,21 +133,17 @@ class _NewMessagePageState extends State<NewMessagePage> {
               ),
             ),
             Expanded(
-              child: FutureBuilder<List<Contact>>(
-                future: _future,
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
+              child: Builder(
+                builder: (context) {
+                  if (_loadingFirstTime) {
                     return const Center(child: CircularProgressIndicator(color: _kPrimary));
                   }
-                  if (snapshot.hasError) {
+                  if (_error != null) {
                     return Center(
-                      child: Text(
-                        snapshot.error.toString().replaceFirst('Exception: ', ''),
-                        style: const TextStyle(color: _kTextGray),
-                      ),
+                      child: Text(_error!, style: const TextStyle(color: _kTextGray)),
                     );
                   }
-                  final contacts = snapshot.data ?? [];
+                  final contacts = _contacts ?? [];
                   if (contacts.isEmpty) {
                     return const Center(
                       child: Padding(
