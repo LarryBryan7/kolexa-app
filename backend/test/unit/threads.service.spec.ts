@@ -395,28 +395,18 @@ describe('ThreadsService — bandeja y no-leído', () => {
         update: jest.fn(),
       },
       threadMessage: {
-        findMany: jest.fn().mockImplementation(({ select, where }) => {
-          // Primera llamada (último mensaje por hilo) trae `body`/`senderId` en el select;
-          // la segunda (conteo) solo `threadId`/`sentAt` — distinguimos por eso.
-          if (select?.body) {
-            expect(where.senderId).toBeUndefined();
-            return Promise.resolve([
-              { threadId: 1n, body: 'hola', senderId: TEACHER.id, sentAt: now },
-            ]);
-          }
-          // El where real le pide a Prisma excluir los mensajes propios — se
-          // verifica acá para no depender solo de que el mock "se porte bien".
-          expect(where.senderId).toEqual({ not: PARENT.id });
-          return Promise.resolve([
-            { threadId: 1n, sentAt: new Date('2026-08-30T09:30:00Z') },
-            { threadId: 1n, sentAt: now },
-          ]);
-        }),
+        findMany: jest.fn().mockResolvedValue([
+          { threadId: 1n, body: 'primero', senderId: PARENT.id, sentAt: new Date('2026-08-30T09:15:00Z') },
+          { threadId: 1n, body: 'segundo', senderId: TEACHER.id, sentAt: new Date('2026-08-30T09:30:00Z') },
+          { threadId: 1n, body: 'hola', senderId: TEACHER.id, sentAt: now },
+        ]),
         create: jest.fn(),
       },
     });
 
     const inbox = await service.getInbox(PARENT.id, SCHOOL_A);
+    // De los 3 mensajes, 2 son de la otra persona (TEACHER) y posteriores
+    // a `earlier` (el lastReadAt) — el propio (PARENT) nunca cuenta.
     expect(inbox.find((t) => t.id === '1')?.unreadCount).toBe(2);
   });
 

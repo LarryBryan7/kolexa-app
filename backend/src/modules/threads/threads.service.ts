@@ -91,27 +91,21 @@ export class ThreadsService {
     if (parts.length === 0) return [];
 
     const threadIds = parts.map((p) => p.thread.id);
-    const lastMessages = await this.prisma.threadMessage.findMany({
+    const allMessages = await this.prisma.threadMessage.findMany({
       where: { threadId: { in: threadIds }, deletedAt: null },
       orderBy: { sentAt: 'desc' },
       select: { threadId: true, body: true, senderId: true, sentAt: true },
     });
-    const lastByThread = new Map<string, (typeof lastMessages)[number]>();
-    for (const m of lastMessages) {
+    const lastByThread = new Map<string, (typeof allMessages)[number]>();
+    const sentAtsByThread = new Map<string, Date[]>();
+    for (const m of allMessages) {
       const key = m.threadId.toString();
       if (!lastByThread.has(key)) lastByThread.set(key, m);
-    }
-
-    const otherMessages = await this.prisma.threadMessage.findMany({
-      where: { threadId: { in: threadIds }, deletedAt: null, senderId: { not: userId } },
-      select: { threadId: true, sentAt: true },
-    });
-    const sentAtsByThread = new Map<string, Date[]>();
-    for (const m of otherMessages) {
-      const key = m.threadId.toString();
-      const arr = sentAtsByThread.get(key);
-      if (arr) arr.push(m.sentAt);
-      else sentAtsByThread.set(key, [m.sentAt]);
+      if (m.senderId !== userId) {
+        const arr = sentAtsByThread.get(key);
+        if (arr) arr.push(m.sentAt);
+        else sentAtsByThread.set(key, [m.sentAt]);
+      }
     }
 
     return parts
