@@ -80,7 +80,7 @@ class ThreadPreview {
   factory ThreadPreview.fromJson(Map<String, dynamic> json) => ThreadPreview(
         body: json['body'] as String,
         senderId: json['senderId'] as String,
-        sentAt: DateTime.parse(json['sentAt'] as String),
+        sentAt: DateTime.parse(json['sentAt'] as String).toLocal(),
         delivered: json['delivered'] as bool? ?? false,
       );
 }
@@ -142,7 +142,7 @@ class ThreadSummary {
       studentId: json['studentId'] as String?,
       studentName: json['studentName'] as String?,
       priority: json['priority'] as String,
-      lastMessageAt: DateTime.parse(json['lastMessageAt'] as String),
+      lastMessageAt: DateTime.parse(json['lastMessageAt'] as String).toLocal(),
       unread: json['unread'] as bool,
       unreadCount: json['unreadCount'] as int? ?? 0,
       muted: json['muted'] as bool,
@@ -197,7 +197,7 @@ class ThreadMessage {
         senderId: json['senderId'] as String,
         senderName: json['senderName'] as String,
         body: json['body'] as String,
-        sentAt: DateTime.parse(json['sentAt'] as String),
+        sentAt: DateTime.parse(json['sentAt'] as String).toLocal(),
       );
 
   ThreadMessage copyWith({bool? isPending, bool? isFailed}) => ThreadMessage(
@@ -280,8 +280,8 @@ class ThreadsRepository {
       messages: (data['messages'] as List<dynamic>)
           .map((e) => ThreadMessage.fromJson(e as Map<String, dynamic>))
           .toList(),
-      otherLastReadAt: otherLastReadAt != null ? DateTime.parse(otherLastReadAt) : null,
-      otherLastActiveAt: otherLastActiveAt != null ? DateTime.parse(otherLastActiveAt) : null,
+      otherLastReadAt: otherLastReadAt != null ? DateTime.parse(otherLastReadAt).toLocal() : null,
+      otherLastActiveAt: otherLastActiveAt != null ? DateTime.parse(otherLastActiveAt).toLocal() : null,
     );
   }
 
@@ -290,7 +290,7 @@ class ThreadsRepository {
     final data = r.data as Map<String, dynamic>;
     return SentMessage(
       id: data['id'] as String,
-      sentAt: DateTime.parse(data['sentAt'] as String),
+      sentAt: DateTime.parse(data['sentAt'] as String).toLocal(),
     );
   }
 
