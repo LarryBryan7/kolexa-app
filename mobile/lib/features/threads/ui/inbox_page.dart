@@ -8,6 +8,7 @@ import '../../../core/services/push_notifications_service.dart';
 import '../../../core/utils/cached_avatar.dart';
 import '../../auth/bloc/auth_bloc.dart';
 import '../../auth/bloc/auth_state.dart';
+import '../data/staleness_guard.dart';
 import '../data/threads_local_store.dart';
 import '../data/threads_repository.dart';
 import 'new_message_page.dart';
@@ -72,19 +73,29 @@ class InboxPage extends StatefulWidget {
   @override
   State<InboxPage> createState() => _InboxPageState();
 
-  static void clearCache() => _InboxPageState._cachedThreads = null;
+  static void clearCache() {
+    _InboxPageState._cachedThreads = null;
+    // Invalida cualquier _refresh()/_loadFromDisk() en vuelo de la cuenta
+    // que se está cerrando — ver staleness_guard.dart.
+    _InboxPageState._guard.invalidateAccount();
+  }
 
   @visibleForTesting
   static List<ThreadSummary>? get debugCachedThreads => _InboxPageState._cachedThreads;
 
   @visibleForTesting
   static set debugCachedThreads(List<ThreadSummary>? value) => _InboxPageState._cachedThreads = value;
+
+  @visibleForTesting
+  static StalenessGuard get debugGuard => _InboxPageState._guard;
 }
 
 enum _InboxFilter { mensajes, comunicados, reuniones }
 
 class _InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
   static List<ThreadSummary>? _cachedThreads;
+
+  static final _guard = StalenessGuard();
 
   List<ThreadSummary>? _threads;
   bool _loadingFirstTime = false;
@@ -125,8 +136,9 @@ class _InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
   }
 
   Future<void> _loadFromDisk() async {
+    final epoch = _guard.beginAccountEpoch();
     final local = await ThreadsLocalStore.loadInbox();
-    if (!mounted || local.isEmpty || _threads != null) return;
+    if (!mounted || !_guard.isAccountCurrent(epoch) || local.isEmpty || _threads != null) return;
     _cachedThreads = local;
     setState(() {
       _threads = local;
@@ -135,12 +147,17 @@ class _InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
   }
 
   Future<void> _refresh({bool showErrorIfEmpty = false}) async {
+    final epoch = _guard.beginAccountEpoch();
+    final seq = _guard.beginSequence();
     if (_threads == null) setState(() => _loadingFirstTime = true);
     try {
       final repo = ThreadsRepository(context.read<ApiClient>());
       final threads = await repo.getInbox();
+      if (!_guard.isCurrent(epoch, seq)) return;
       _cachedThreads = threads;
-      ThreadsLocalStore.saveInbox(threads);
+      ThreadsLocalStore.saveInbox(threads).catchError((e, st) {
+        debugPrint('[InboxPage] saveInbox falló: $e\n$st');
+      });
       if (!mounted) return;
       setState(() {
         _threads = threads;
@@ -148,6 +165,7 @@ class _InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
         _loadingFirstTime = false;
       });
     } catch (e) {
+      if (!_guard.isCurrent(epoch, seq)) return;
       if (!mounted) return;
       setState(() => _loadingFirstTime = false);
       // Un refresh silencioso que falla no debe tapar la lista ya cargada
@@ -190,7 +208,9 @@ class _InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
           .map((s) => s.id == t.id ? s.copyWith(unread: false, unreadCount: 0) : s)
           .toList();
       _cachedThreads = updated;
-      ThreadsLocalStore.saveInbox(updated);
+      ThreadsLocalStore.saveInbox(updated).catchError((e, st) {
+        debugPrint('[InboxPage] saveInbox (optimista) falló: $e\n$st');
+      });
       setState(() => _threads = updated);
     }
     await _onRefresh();

@@ -32,6 +32,12 @@ void main() {
 
       expect(InboxPage.debugCachedThreads, isNull);
     });
+
+    test('clearCache() también invalida el guard de staleness (B1)', () {
+      final epoch = InboxPage.debugGuard.beginAccountEpoch();
+      InboxPage.clearCache();
+      expect(InboxPage.debugGuard.isAccountCurrent(epoch), isFalse);
+    });
   });
 
   group('ThreadPage', () {
@@ -52,6 +58,12 @@ void main() {
 
       expect(ThreadPage.debugCache, isEmpty);
     });
+
+    test('clearCache() también invalida el guard de staleness (B1)', () {
+      final epoch = ThreadPage.debugGuard.beginAccountEpoch();
+      ThreadPage.clearCache();
+      expect(ThreadPage.debugGuard.isAccountCurrent(epoch), isFalse);
+    });
   });
 
   group('NewMessagePage', () {
@@ -64,6 +76,12 @@ void main() {
       NewMessagePage.clearCache();
 
       expect(NewMessagePage.debugCachedContacts, isNull);
+    });
+
+    test('clearCache() también invalida el guard de staleness (B1)', () {
+      final epoch = NewMessagePage.debugGuard.beginAccountEpoch();
+      NewMessagePage.clearCache();
+      expect(NewMessagePage.debugGuard.isAccountCurrent(epoch), isFalse);
     });
   });
 }

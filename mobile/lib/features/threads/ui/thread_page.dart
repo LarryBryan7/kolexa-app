@@ -17,6 +17,7 @@ import '../../homework/bloc/homework_bloc.dart';
 import '../../homework/data/datasources/homework_remote_datasource.dart';
 import '../../homework/data/repositories/homework_repository.dart';
 import '../../homework/ui/homework_page.dart';
+import '../data/staleness_guard.dart';
 import '../data/threads_local_store.dart';
 import '../data/threads_repository.dart';
 
@@ -187,14 +188,24 @@ class ThreadPage extends StatefulWidget {
     );
   }
 
-  static void clearCache() => _ThreadPageState._cache.clear();
+  static void clearCache() {
+    _ThreadPageState._cache.clear();
+    // Invalida cualquier _load()/_loadFromDisk()/_sendBody() en vuelo de
+    // la cuenta que se está cerrando — ver staleness_guard.dart.
+    _ThreadPageState._guard.invalidateAccount();
+  }
 
   @visibleForTesting
   static Map<String, ThreadMessagesPage> get debugCache => _ThreadPageState._cache;
+
+  @visibleForTesting
+  static StalenessGuard get debugGuard => _ThreadPageState._guard;
 }
 
 class _ThreadPageState extends State<ThreadPage> with WidgetsBindingObserver {
   static final Map<String, ThreadMessagesPage> _cache = {};
+
+  static final _guard = StalenessGuard();
 
   late final ThreadsRepository _repo;
   late final int _myUserId;
@@ -259,8 +270,9 @@ class _ThreadPageState extends State<ThreadPage> with WidgetsBindingObserver {
       messages != null && messages.isNotEmpty && messages.every((m) => m.id.startsWith('preview-'));
 
   Future<void> _loadFromDisk() async {
+    final epoch = _guard.beginAccountEpoch();
     final local = await ThreadsLocalStore.loadThread(widget.threadId);
-    if (!mounted || local == null) return;
+    if (!mounted || !_guard.isAccountCurrent(epoch) || local == null) return;
     final hasRealData = _messages != null && !_isOnlySeed(_messages);
     if (hasRealData) return; // la red (u otra carga) ya trajo algo real
     final seed = (_messages ?? []).where((m) => m.id.startsWith('preview-'));
@@ -282,11 +294,16 @@ class _ThreadPageState extends State<ThreadPage> with WidgetsBindingObserver {
   }
 
   Future<void> _load({bool forceScroll = false}) async {
+    final epoch = _guard.beginAccountEpoch();
+    final seq = _guard.beginSequence(widget.threadId);
     if (_messages == null) setState(() => _loadingFirstTime = true);
     try {
       final page = await _repo.getMessages(widget.threadId);
+      if (!_guard.isCurrent(epoch, seq, widget.threadId)) return;
       _cache[widget.threadId] = page;
-      ThreadsLocalStore.saveThread(widget.threadId, page);
+      ThreadsLocalStore.saveThread(widget.threadId, page).catchError((e, st) {
+        debugPrint('[ThreadPage] saveThread falló (hilo ${widget.threadId}): $e\n$st');
+      });
       if (!mounted) return;
       setState(() {
         _messages = page.messages;
@@ -299,6 +316,7 @@ class _ThreadPageState extends State<ThreadPage> with WidgetsBindingObserver {
         WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
       }
     } catch (e) {
+      if (!_guard.isCurrent(epoch, seq, widget.threadId)) return;
       if (!mounted) return;
       setState(() {
         _loadingFirstTime = false;
@@ -426,6 +444,7 @@ class _ThreadPageState extends State<ThreadPage> with WidgetsBindingObserver {
   }
 
   Future<void> _sendBody(String body) async {
+    final epoch = _guard.beginAccountEpoch();
     final tempId = 'pending-${DateTime.now().microsecondsSinceEpoch}';
     final pending = ThreadMessage(
       id: tempId,
@@ -440,7 +459,7 @@ class _ThreadPageState extends State<ThreadPage> with WidgetsBindingObserver {
     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
     try {
       final sent = await _repo.sendMessage(widget.threadId, body);
-      if (!mounted) return;
+      if (!mounted || !_guard.isAccountCurrent(epoch)) return;
       final confirmed = ThreadMessage(
         id: sent.id,
         senderId: _myUserId.toString(),
@@ -458,10 +477,12 @@ class _ThreadPageState extends State<ThreadPage> with WidgetsBindingObserver {
         otherLastReadAt: _otherLastReadAt,
         otherLastActiveAt: _otherLastActiveAt,
       );
-      ThreadsLocalStore.saveMessage(widget.threadId, confirmed);
+      ThreadsLocalStore.saveMessage(widget.threadId, confirmed).catchError((e, st) {
+        debugPrint('[ThreadPage] saveMessage falló (hilo ${widget.threadId}): $e\n$st');
+      });
       WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || !_guard.isAccountCurrent(epoch)) return;
       setState(() {
         _pendingMessages = _pendingMessages
             .map((m) => m.id == tempId ? m.copyWith(isFailed: true) : m)
