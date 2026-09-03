@@ -1,8 +1,11 @@
 // app_database_isolation_test.dart — Aislamiento de datos entre cuentas
 
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:sqflite/sqflite.dart' show getDatabasesPath, databaseFactory;
+import 'package:sqflite_common_ffi/sqflite_ffi.dart' show databaseFactoryFfi;
 import 'package:kolexa/core/db/app_database.dart';
 import 'package:kolexa/features/threads/data/threads_local_store.dart';
 import 'package:kolexa/features/threads/data/threads_repository.dart';
@@ -11,12 +14,9 @@ const _testUserIds = [9001, 9002, 9003, 9004, 9005, 9006, 9007];
 
 Future<void> _wipeTestDatabases() async {
   for (final id in _testUserIds) {
-    final path = join(await databaseFactory.getDatabasesPath(), 'kolexa_$id.db');
-    try {
-      await databaseFactory.deleteDatabase(path);
-    } catch (_) {
-      // No existía todavía — nada que borrar.
-    }
+    final path = join(await getDatabasesPath(), 'kolexa_$id.db');
+    final file = File(path);
+    if (await file.exists()) await file.delete();
   }
 }
 
@@ -33,7 +33,6 @@ ThreadMessage _message(String id, String body) => ThreadMessage(
 
 void main() {
   setUpAll(() {
-    sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
   });
 
@@ -140,8 +139,8 @@ void main() {
       final openSecond = AppDatabase.instance.openForUser(9006);
       await Future.wait([openFirst, openSecond]);
 
-      final db = await AppDatabase.instance.database;
-      expect(db.path, contains('kolexa_9006'));
+      await AppDatabase.instance.database; // fuerza a esperar la apertura en vuelo
+      expect(AppDatabase.instance.debugCurrentUserId, 9006);
 
       // Y la cuenta que "perdió la carrera" no queda con datos mezclados:
       // escribir ahora debe ir al archivo de 9006, no al de 9005.

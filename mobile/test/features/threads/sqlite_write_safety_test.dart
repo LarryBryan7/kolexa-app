@@ -1,10 +1,13 @@
 // sqlite_write_safety_test.dart — Fase 2: errores de SQLite (B2) +
 // confirmación de que la deduplicación por id no se rompió
 
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:sqflite/sqflite.dart' show getDatabasesPath, databaseFactory;
+import 'package:sqflite_common_ffi/sqflite_ffi.dart' show databaseFactoryFfi;
 
 import 'package:kolexa/core/db/app_database.dart';
 import 'package:kolexa/features/threads/data/threads_local_store.dart';
@@ -22,8 +25,9 @@ ThreadMessage _message(String id, String body) => ThreadMessage(
     );
 
 void main() {
+  // Solo para que `getDatabasesPath()` resuelva sin canal de plataforma
+  // real — ver mismo comentario en app_database_isolation_test.dart.
   setUpAll(() {
-    sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
   });
 
@@ -88,10 +92,9 @@ void main() {
   group('deduplicación por id (requisito 7 — confirmar que sigue intacta)', () {
     setUp(() async {
       await AppDatabase.instance.close();
-      final path = join(await databaseFactory.getDatabasesPath(), 'kolexa_777.db');
-      try {
-        await databaseFactory.deleteDatabase(path);
-      } catch (_) {}
+      final path = join(await getDatabasesPath(), 'kolexa_777.db');
+      final file = File(path);
+      if (await file.exists()) await file.delete();
       await AppDatabase.instance.openForUser(777);
     });
 
