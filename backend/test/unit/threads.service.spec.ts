@@ -312,7 +312,7 @@ describe('ThreadsService — bandeja y no-leído', () => {
               priority: 'normal',
               lastMessageAt: now,
               student: { firstName: 'Juan', lastName: 'Quispe' },
-              participants: [{ user: { id: TEACHER.id, firstName: 'Ana', lastName: 'Pérez', avatar: null } }],
+              participants: [{ user: { id: TEACHER.id, firstName: 'Ana', lastName: 'Pérez', avatar: null, userRoles: [{ role: { name: 'teacher' } }] } }],
             },
           },
           {
@@ -326,7 +326,7 @@ describe('ThreadsService — bandeja y no-leído', () => {
               priority: 'normal',
               lastMessageAt: now,
               student: null,
-              participants: [{ user: { id: ADMIN.id, firstName: 'Director', lastName: null, avatar: null } }],
+              participants: [{ user: { id: ADMIN.id, firstName: 'Director', lastName: null, avatar: null, userRoles: [{ role: { name: 'school_admin' } }] } }],
             },
           },
           {
@@ -340,7 +340,7 @@ describe('ThreadsService — bandeja y no-leído', () => {
               priority: 'normal',
               lastMessageAt: earlier, // ya leído: el mensaje es más viejo que la lectura
               student: null,
-              participants: [{ user: { id: TEACHER.id, firstName: 'Ana', lastName: null, avatar: null } }],
+              participants: [{ user: { id: TEACHER.id, firstName: 'Ana', lastName: null, avatar: null, userRoles: [{ role: { name: 'teacher' } }] } }],
             },
           },
         ]),
@@ -392,7 +392,7 @@ describe('ThreadsService — bandeja y no-leído', () => {
               priority: 'normal',
               lastMessageAt: now,
               student: null,
-              participants: [{ user: { id: TEACHER.id, firstName: 'Ana', lastName: null, avatar: null } }],
+              participants: [{ user: { id: TEACHER.id, firstName: 'Ana', lastName: null, avatar: null, userRoles: [{ role: { name: 'teacher' } }] } }],
             },
           },
         ]),
@@ -434,7 +434,7 @@ describe('ThreadsService — bandeja y no-leído', () => {
               lastMessageAt: new Date(),
               student: null,
               participants: [
-                { user: { id: TEACHER.id, firstName: 'Ana', lastName: null, avatar: null, lastActiveAt: recent } },
+                { user: { id: TEACHER.id, firstName: 'Ana', lastName: null, avatar: null, lastActiveAt: recent, userRoles: [{ role: { name: 'teacher' } }] } },
               ],
             },
           },
@@ -450,7 +450,7 @@ describe('ThreadsService — bandeja y no-leído', () => {
               lastMessageAt: new Date(),
               student: null,
               participants: [
-                { user: { id: OTHER_TEACHER.id, firstName: 'Luis', lastName: null, avatar: null, lastActiveAt: stale } },
+                { user: { id: OTHER_TEACHER.id, firstName: 'Luis', lastName: null, avatar: null, lastActiveAt: stale, userRoles: [{ role: { name: 'teacher' } }] } },
               ],
             },
           },
@@ -466,7 +466,7 @@ describe('ThreadsService — bandeja y no-leído', () => {
               lastMessageAt: new Date(),
               student: null,
               participants: [
-                { user: { id: ADMIN.id, firstName: 'Director', lastName: null, avatar: null, lastActiveAt: null } },
+                { user: { id: ADMIN.id, firstName: 'Director', lastName: null, avatar: null, lastActiveAt: null, userRoles: [{ role: { name: 'school_admin' } }] } },
               ],
             },
           },
@@ -498,7 +498,7 @@ describe('ThreadsService — bandeja y no-leído', () => {
             thread: {
               id: 1n, kind: 'direct', subject: null, studentId: null, priority: 'normal',
               lastMessageAt: sentAt, student: null,
-              participants: [{ lastReadAt: after, user: { id: TEACHER.id, firstName: 'Ana', lastName: null, avatar: null, lastActiveAt: null } }],
+              participants: [{ lastReadAt: after, user: { id: TEACHER.id, firstName: 'Ana', lastName: null, avatar: null, lastActiveAt: null, userRoles: [{ role: { name: 'teacher' } }] } }],
             },
           },
           // Hilo 2: no leyó, pero estuvo activa/online después del envío -> delivered.
@@ -508,7 +508,7 @@ describe('ThreadsService — bandeja y no-leído', () => {
             thread: {
               id: 2n, kind: 'direct', subject: null, studentId: null, priority: 'normal',
               lastMessageAt: sentAt, student: null,
-              participants: [{ lastReadAt: null, user: { id: OTHER_TEACHER.id, firstName: 'Luis', lastName: null, avatar: null, lastActiveAt: after } }],
+              participants: [{ lastReadAt: null, user: { id: OTHER_TEACHER.id, firstName: 'Luis', lastName: null, avatar: null, lastActiveAt: after, userRoles: [{ role: { name: 'teacher' } }] } }],
             },
           },
           // Hilo 3: ni leyó ni estuvo activa después del envío -> NO delivered.
@@ -518,7 +518,7 @@ describe('ThreadsService — bandeja y no-leído', () => {
             thread: {
               id: 3n, kind: 'direct', subject: null, studentId: null, priority: 'normal',
               lastMessageAt: sentAt, student: null,
-              participants: [{ lastReadAt: before, user: { id: ADMIN.id, firstName: 'Director', lastName: null, avatar: null, lastActiveAt: before } }],
+              participants: [{ lastReadAt: before, user: { id: ADMIN.id, firstName: 'Director', lastName: null, avatar: null, lastActiveAt: before, userRoles: [{ role: { name: 'school_admin' } }] } }],
             },
           },
         ]),
@@ -829,9 +829,11 @@ describe('ThreadsService.getContacts — a quién se le puede escribir', () => {
           teacher_first_name: 'Ana',
           teacher_last_name: 'Pérez',
           teacher_avatar: null,
+          teacher_last_active: null,
           student_id: STUDENT,
           student_first_name: 'Juan',
           student_last_name: 'Quispe',
+          student_avatar: null,
         },
       ]),
     });
@@ -840,7 +842,9 @@ describe('ThreadsService.getContacts — a quién se le puede escribir', () => {
     expect(contacts).toHaveLength(2);
     const teacher = contacts.find((c) => c.role === 'teacher')!;
     expect(teacher.userId).toBe(TEACHER.id.toString());
-    expect(teacher.students).toEqual([{ id: STUDENT.toString(), name: 'Juan Quispe' }]);
+    expect(teacher.students).toEqual([
+      { id: STUDENT.toString(), name: 'Juan Quispe', avatar: null },
+    ]);
     expect(contacts.some((c) => c.role === 'school_admin')).toBe(true);
   });
 
@@ -855,7 +859,14 @@ describe('ThreadsService.getContacts — a quién se le puede escribir', () => {
     });
     const contacts = await service.getContacts(SCHOOL_A, PARENT);
     expect(contacts).toEqual([
-      { userId: ADMIN.id.toString(), name: 'Directora', avatar: null, role: 'school_admin', students: [] },
+      {
+        userId: ADMIN.id.toString(),
+        name: 'Directora',
+        avatar: null,
+        online: false,
+        role: 'school_admin',
+        students: [],
+      },
     ]);
   });
 
@@ -870,18 +881,22 @@ describe('ThreadsService.getContacts — a quién se le puede escribir', () => {
           parent_first_name: 'Rosa',
           parent_last_name: 'Quispe',
           parent_avatar: null,
+          parent_last_active: null,
           student_id: STUDENT,
           student_first_name: 'Juan',
           student_last_name: 'Quispe',
+          student_avatar: null,
         },
         {
           parent_id: PARENT.id,
           parent_first_name: 'Rosa',
           parent_last_name: 'Quispe',
           parent_avatar: null,
+          parent_last_active: null,
           student_id: OTHER_STUDENT,
           student_first_name: 'Ana',
           student_last_name: 'García',
+          student_avatar: null,
         },
       ]),
     });
@@ -909,7 +924,14 @@ describe('ThreadsService.getContacts — a quién se le puede escribir', () => {
     });
     const contacts = await service.getContacts(SCHOOL_A, ADMIN);
     expect(contacts).toEqual([
-      { userId: TEACHER.id.toString(), name: 'Ana Pérez', avatar: null, role: 'teacher', students: [] },
+      {
+        userId: TEACHER.id.toString(),
+        name: 'Ana Pérez',
+        avatar: null,
+        online: false,
+        role: 'teacher',
+        students: [],
+      },
     ]);
     expect(prisma.user.findMany).toHaveBeenCalledTimes(2);
   });
