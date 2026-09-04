@@ -391,10 +391,10 @@ export class ClassroomService {
         const parts = fullName.trim().split(/\s+/);
         const firstName = parts[0];
         const lastName = parts.slice(1).join(' ') || null;
-        return Prisma.sql`(${schoolId}::bigint, ${firstName}::varchar, ${lastName}::varchar, true)`;
+        return Prisma.sql`(${schoolId}::bigint, ${firstName}::varchar, ${lastName}::varchar, true, NOW())`;
       });
       const created = await this.prisma.$queryRaw<{ id: bigint }[]>`
-        INSERT INTO "students" (school_id, first_name, last_name, is_active)
+        INSERT INTO "students" (school_id, first_name, last_name, is_active, updated_at)
         VALUES ${Prisma.join(studentValueRows)}
         RETURNING id
       `;
