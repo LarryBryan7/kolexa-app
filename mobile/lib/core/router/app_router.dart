@@ -96,7 +96,7 @@ class AppRouter {
         final location = state.matchedLocation;
 
         if (authState is AuthInitial || authState is AuthLoading) {
-          return location == splash ? null : splash;
+          return (location == splash || location == login) ? null : splash;
         }
 
         if (authState is AuthAuthenticated) {

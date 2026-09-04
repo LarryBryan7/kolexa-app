@@ -336,7 +336,7 @@ class _HomeV2PageState extends State<HomeV2Page> with WidgetsBindingObserver {
     setState(() => _connectingClassroom = true);
     try {
       final url = await ClassroomRepository(context.read<ApiClient>()).getAuthUrl(studentId);
-      final launched = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      final launched = await launchUrl(Uri.parse(url), mode: LaunchMode.inAppBrowserView);
       if (!launched && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('No se pudo abrir el navegador')),

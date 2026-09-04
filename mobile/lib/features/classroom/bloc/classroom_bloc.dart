@@ -103,7 +103,7 @@ class ClassroomBloc extends Bloc<ClassroomEvent, ClassroomState> {
   Future<void> _onConnect(ConnectClassroom event, Emitter<ClassroomState> emit) async {
     try {
       final url = await _repo.getAuthUrl(event.studentId);
-      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      await launchUrl(Uri.parse(url), mode: LaunchMode.inAppBrowserView);
     } catch (e) {
       emit(ClassroomError('No se pudo abrir el navegador'));
     }
