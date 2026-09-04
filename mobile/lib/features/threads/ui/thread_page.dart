@@ -499,12 +499,15 @@ class _ThreadPageState extends State<ThreadPage> with WidgetsBindingObserver {
           firstMessageBody: body,
         );
         if (!mounted || !_guard.isAccountCurrent(epoch)) return;
-        setState(() {
-          _threadId = threadId;
-          _pendingMessages = _pendingMessages.where((m) => m.id != tempId).toList();
-        });
+        setState(() => _threadId = threadId);
         InboxSyncService.instance.refresh();
         await _load(forceScroll: true);
+        if (!mounted || !_guard.isAccountCurrent(epoch)) return;
+        if (_messages != null) {
+          setState(() {
+            _pendingMessages = _pendingMessages.where((m) => m.id != tempId).toList();
+          });
+        }
         return;
       }
 
@@ -650,7 +653,7 @@ class _ThreadPageState extends State<ThreadPage> with WidgetsBindingObserver {
             ),
             Expanded(
               child: Builder(builder: (context) {
-                if (_messages == null) {
+                if (_messages == null && _pendingMessages.isEmpty) {
                   if (_loadingFirstTime) {
                     return const Center(child: CircularProgressIndicator(color: _kAccent));
                   }
