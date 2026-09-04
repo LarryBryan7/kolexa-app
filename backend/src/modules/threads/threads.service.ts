@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { SupabaseStorageService } from '../storage/supabase-storage.service';
 
 export interface ThreadSummary {
   id: string;
@@ -70,7 +71,15 @@ export class ThreadsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
+    private readonly storage: SupabaseStorageService,
   ) {}
+
+  private async _signStudentAvatars(paths: (string | null)[]): Promise<Map<string, string>> {
+    const unique = [...new Set(paths.filter((p): p is string => p != null))];
+    if (unique.length === 0) return new Map();
+    const signed = await this.storage.getSignedUrls(unique, 3600, 'avatars');
+    return new Map(unique.map((p, i) => [p, signed[i]]));
+  }
 
   // ── Bandeja ───────────────────────────────────────────────
   async getInbox(userId: bigint, schoolId: bigint): Promise<ThreadSummary[]> {
@@ -265,6 +274,7 @@ export class ThreadsService {
         `,
       ]);
       const adminContacts = toAdminContacts(admins);
+      const signedStudentAvatars = await this._signStudentAvatars(rows.map((r) => r.student_avatar));
 
       const byTeacher = new Map<
         string,
@@ -287,7 +297,7 @@ export class ThreadsService {
         }
         byTeacher.get(key)!.students.set(row.student_id.toString(), {
           name: `${row.student_first_name} ${row.student_last_name ?? ''}`.trim(),
-          avatar: row.student_avatar,
+          avatar: row.student_avatar ? signedStudentAvatars.get(row.student_avatar) ?? null : null,
         });
       }
 
@@ -341,6 +351,7 @@ export class ThreadsService {
         `,
       ]);
       const adminContacts = toAdminContacts(admins);
+      const signedStudentAvatars = await this._signStudentAvatars(rows.map((r) => r.student_avatar));
 
       const byParent = new Map<
         string,
@@ -363,7 +374,7 @@ export class ThreadsService {
         }
         byParent.get(key)!.students.set(row.student_id.toString(), {
           name: `${row.student_first_name} ${row.student_last_name ?? ''}`.trim(),
-          avatar: row.student_avatar,
+          avatar: row.student_avatar ? signedStudentAvatars.get(row.student_avatar) ?? null : null,
         });
       }
 
