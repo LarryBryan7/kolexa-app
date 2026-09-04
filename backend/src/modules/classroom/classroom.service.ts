@@ -216,6 +216,8 @@ export class ClassroomService {
     const schoolId = teacherRole?.schoolId ?? null;
 
     // ── Optimización (N+1): precargar UNA sola vez los estudiantes del colegio ──
+    const normalize = (s: string) =>
+      s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
     const studentsByNormalizedName = new Map<string, bigint>();
     if (schoolId) {
       const allStudents = await this.prisma.student.findMany({
@@ -224,8 +226,6 @@ export class ClassroomService {
       });
       const t2b = Date.now();
       console.log(`[TEACHER-SYNC] student.findMany = ${t2b - t2} ms`);
-      const normalize = (s: string) =>
-        s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
       const nameCount = new Map<string, number>();
       const nameToId = new Map<string, bigint>();
       for (const st of allStudents) {
@@ -369,6 +369,67 @@ export class ClassroomService {
     console.log(`[TEACHER-COURSES] end total=${t6 - c0} ms`);
     console.log(`[TEACHER-SYNC] courses-db = ${t6 - t5} ms`);
 
+    const unmatchedByGoogleId = new Map<string, string>();
+    for (const { fetchedStudents } of perCourse) {
+      for (const s of fetchedStudents) {
+        const fullName: string = s.profile?.name?.fullName ?? '–';
+        const normalized = normalize(fullName);
+        if (!studentsByNormalizedName.has(normalized) && !unmatchedByGoogleId.has(s.userId)) {
+          unmatchedByGoogleId.set(s.userId, fullName);
+        }
+      }
+    }
+    const newlyCreatedIdByGoogleId = new Map<string, bigint>();
+    if (schoolId && unmatchedByGoogleId.size > 0) {
+      const entries = [...unmatchedByGoogleId.entries()];
+      const studentValueRows = entries.map(([, fullName]) => {
+        const parts = fullName.trim().split(/\s+/);
+        const firstName = parts[0];
+        const lastName = parts.slice(1).join(' ') || null;
+        return Prisma.sql`(${schoolId}::bigint, ${firstName}::varchar, ${lastName}::varchar, true)`;
+      });
+      const created = await this.prisma.$queryRaw<{ id: bigint }[]>`
+        INSERT INTO "students" (school_id, first_name, last_name, is_active)
+        VALUES ${Prisma.join(studentValueRows)}
+        RETURNING id
+      `;
+      entries.forEach(([googleId], i) => newlyCreatedIdByGoogleId.set(googleId, created[i].id));
+      console.log(`[TEACHER-SYNC] alumnos-nuevos creados=${created.length}`);
+
+      // Si el curso de Google ya está enlazado a un aula institucional, matricular
+      // de una vez: sin esto el padre nunca vería el horario del alumno.
+      const courseLinks = await this.prisma.gcCourseLink.findMany({
+        where: { schoolId },
+        select: { googleCourseId: true, classroomCourse: { select: { classroomId: true } } },
+      });
+      const classroomIdByGoogleCourseId = new Map<string, bigint>();
+      for (const link of courseLinks) {
+        classroomIdByGoogleCourseId.set(link.googleCourseId, link.classroomCourse.classroomId);
+      }
+      const academicYear = new Date().getFullYear();
+      const enrollmentPairs = new Map<string, { studentId: bigint; classroomId: bigint }>();
+      for (const { course, fetchedStudents } of perCourse) {
+        const classroomId = classroomIdByGoogleCourseId.get(course.id!);
+        if (!classroomId) continue;
+        for (const s of fetchedStudents) {
+          const newId = newlyCreatedIdByGoogleId.get(s.userId);
+          if (!newId) continue;
+          enrollmentPairs.set(`${newId}:${classroomId}`, { studentId: newId, classroomId });
+        }
+      }
+      if (enrollmentPairs.size > 0) {
+        const enrollmentValueRows = [...enrollmentPairs.values()].map(
+          (p) => Prisma.sql`(${p.studentId}::bigint, ${p.classroomId}::bigint, ${academicYear}::smallint, true)`,
+        );
+        await this.prisma.$executeRaw`
+          INSERT INTO "student_enrollments" (student_id, classroom_id, academic_year, is_active)
+          VALUES ${Prisma.join(enrollmentValueRows)}
+          ON CONFLICT (student_id, classroom_id, academic_year) DO UPDATE SET is_active = true
+        `;
+        console.log(`[TEACHER-SYNC] matriculas-nuevas=${enrollmentPairs.size}`);
+      }
+    }
+
     const [rosterResult, submissionsResult] = await Promise.all([
       (async () => {
         console.log('[TEACHER-ROSTER] start');
@@ -397,7 +458,8 @@ export class ClassroomService {
           for (const s of fetchedStudents) {
             const fullName: string = s.profile?.name?.fullName ?? '–';
             const normalized = fullName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
-            const matchedId = studentsByNormalizedName.get(normalized) ?? null;
+            const matchedId =
+              studentsByNormalizedName.get(normalized) ?? newlyCreatedIdByGoogleId.get(s.userId) ?? null;
             allNewStudents.push({
               courseId,
               googleId: s.userId,
