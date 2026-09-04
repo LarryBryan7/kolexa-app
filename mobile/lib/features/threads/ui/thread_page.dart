@@ -11,12 +11,14 @@ import '../../../core/api/api_client.dart';
 import '../../../core/services/manufacturer_settings_service.dart';
 import '../../../core/utils/cached_avatar.dart';
 import '../../../core/services/push_notifications_service.dart';
+import '../../../core/widgets/press_tint.dart';
 import '../../auth/bloc/auth_bloc.dart';
 import '../../auth/bloc/auth_state.dart';
 import '../../homework/bloc/homework_bloc.dart';
 import '../../homework/data/datasources/homework_remote_datasource.dart';
 import '../../homework/data/repositories/homework_repository.dart';
 import '../../homework/ui/homework_page.dart';
+import '../data/inbox_sync_service.dart';
 import '../data/staleness_guard.dart';
 import '../data/threads_local_store.dart';
 import '../data/threads_repository.dart';
@@ -60,6 +62,13 @@ const _kSvgPaperPlane =
     '</svg>';
 
 final RegExp _mentionRe = RegExp(r'@\[(.*?)\]\((homework|gc-coursework):(\d+)\)');
+
+String? _roleLabel(String? role) => switch (role) {
+      'teacher' => 'Docente',
+      'parent' => 'Apoderado',
+      'school_admin' => 'Dirección del colegio',
+      _ => null,
+    };
 
 class _MentionComposerController extends TextEditingController {
   @override
@@ -150,22 +159,27 @@ class _MentionChip extends StatelessWidget {
 }
 
 class ThreadPage extends StatefulWidget {
-  final String threadId;
+  final String? threadId;
+  final String? recipientId;
   final String title;
   final String? avatarUrl;
   final bool online;
+  final String? otherRole;
   final String? studentId;
   final String? studentName;
 
   const ThreadPage({
     super.key,
-    required this.threadId,
+    this.threadId,
+    this.recipientId,
     required this.title,
     this.avatarUrl,
     this.online = false,
+    this.otherRole,
     this.studentId,
     this.studentName,
-  });
+  }) : assert(threadId != null || recipientId != null,
+            'ThreadPage necesita threadId (hilo existente) o recipientId (conversación nueva)');
 
   @override
   State<ThreadPage> createState() => _ThreadPageState();
@@ -186,6 +200,10 @@ class ThreadPage extends StatefulWidget {
       otherLastReadAt: existing?.otherLastReadAt,
       otherLastActiveAt: existing?.otherLastActiveAt,
     );
+  }
+
+  static void primeCache(String threadId, ThreadMessagesPage page) {
+    _ThreadPageState._cache[threadId] = page;
   }
 
   static void clearCache() {
@@ -212,6 +230,7 @@ class _ThreadPageState extends State<ThreadPage> with WidgetsBindingObserver {
   late final List<String> _myRoles;
   final _controller = _MentionComposerController();
   final _scroll = ScrollController();
+  String? _threadId;
   List<ThreadMessage>? _messages;
   DateTime? _otherLastReadAt;
   DateTime? _otherLastActiveAt;
@@ -232,9 +251,10 @@ class _ThreadPageState extends State<ThreadPage> with WidgetsBindingObserver {
     _myUserId = authState is AuthAuthenticated ? authState.user.id : -1;
     _myRoles = authState is AuthAuthenticated ? authState.user.roles : const [];
     _controller.addListener(_onTextChanged);
-    _messages = _cache[widget.threadId]?.messages;
-    _otherLastReadAt = _cache[widget.threadId]?.otherLastReadAt;
-    _otherLastActiveAt = _cache[widget.threadId]?.otherLastActiveAt;
+    _threadId = widget.threadId;
+    _messages = _threadId != null ? _cache[_threadId]?.messages : null;
+    _otherLastReadAt = _threadId != null ? _cache[_threadId]?.otherLastReadAt : null;
+    _otherLastActiveAt = _threadId != null ? _cache[_threadId]?.otherLastActiveAt : null;
     if (_messages == null || _isOnlySeed(_messages)) _loadFromDisk();
     _load();
     // Se marca leído al entrar: si el otro responde mientras se lee, el
@@ -245,12 +265,16 @@ class _ThreadPageState extends State<ThreadPage> with WidgetsBindingObserver {
   }
 
   void _markRead() {
-    _repo.markRead(widget.threadId).catchError((_) {});
+    final threadId = _threadId;
+    if (threadId == null) return; // conversación nueva, todavía no hay hilo que marcar
+    _repo.markRead(threadId).then((_) {
+      InboxSyncService.instance.refresh();
+    }).catchError((_) {});
   }
 
   void _handleDataRefresh(Map<String, dynamic> data) {
     if (!mounted) return;
-    if (data['screen'] == 'thread' && data['threadId'] == widget.threadId) {
+    if (data['screen'] == 'thread' && data['threadId'] == _threadId) {
       _load();
       _markRead();
     }
@@ -270,8 +294,10 @@ class _ThreadPageState extends State<ThreadPage> with WidgetsBindingObserver {
       messages != null && messages.isNotEmpty && messages.every((m) => m.id.startsWith('preview-'));
 
   Future<void> _loadFromDisk() async {
+    final threadId = _threadId;
+    if (threadId == null) return; // conversación nueva, nada que leer todavía
     final epoch = _guard.beginAccountEpoch();
-    final local = await ThreadsLocalStore.loadThread(widget.threadId);
+    final local = await ThreadsLocalStore.loadThread(threadId);
     if (!mounted || !_guard.isAccountCurrent(epoch) || local == null) return;
     final hasRealData = _messages != null && !_isOnlySeed(_messages);
     if (hasRealData) return; // la red (u otra carga) ya trajo algo real
@@ -284,7 +310,7 @@ class _ThreadPageState extends State<ThreadPage> with WidgetsBindingObserver {
       otherLastReadAt: local.otherLastReadAt,
       otherLastActiveAt: local.otherLastActiveAt,
     );
-    _cache[widget.threadId] = merged;
+    _cache[threadId] = merged;
     setState(() {
       _messages = merged.messages;
       _otherLastReadAt = merged.otherLastReadAt;
@@ -294,15 +320,17 @@ class _ThreadPageState extends State<ThreadPage> with WidgetsBindingObserver {
   }
 
   Future<void> _load({bool forceScroll = false}) async {
+    final threadId = _threadId;
+    if (threadId == null) return; // conversación nueva: recién se pide algo al mandar el primer mensaje
     final epoch = _guard.beginAccountEpoch();
-    final seq = _guard.beginSequence(widget.threadId);
+    final seq = _guard.beginSequence(threadId);
     if (_messages == null) setState(() => _loadingFirstTime = true);
     try {
-      final page = await _repo.getMessages(widget.threadId);
-      if (!_guard.isCurrent(epoch, seq, widget.threadId)) return;
-      _cache[widget.threadId] = page;
-      ThreadsLocalStore.saveThread(widget.threadId, page).catchError((e, st) {
-        debugPrint('[ThreadPage] saveThread falló (hilo ${widget.threadId}): $e\n$st');
+      final page = await _repo.getMessages(threadId);
+      if (!_guard.isCurrent(epoch, seq, threadId)) return;
+      _cache[threadId] = page;
+      ThreadsLocalStore.saveThread(threadId, page).catchError((e, st) {
+        debugPrint('[ThreadPage] saveThread falló (hilo $threadId): $e\n$st');
       });
       if (!mounted) return;
       setState(() {
@@ -316,7 +344,7 @@ class _ThreadPageState extends State<ThreadPage> with WidgetsBindingObserver {
         WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
       }
     } catch (e) {
-      if (!_guard.isCurrent(epoch, seq, widget.threadId)) return;
+      if (!_guard.isCurrent(epoch, seq, threadId)) return;
       if (!mounted) return;
       setState(() {
         _loadingFirstTime = false;
@@ -337,6 +365,9 @@ class _ThreadPageState extends State<ThreadPage> with WidgetsBindingObserver {
   // Detecta si el cursor está justo después de un "@" sin espacios de por
   // medio (ej. "hola @tar|" sí, "hola @tar |" no) y dispara la búsqueda.
   void _onTextChanged() {
+    // Conversación nueva (sin hilo todavía): no hay contexto de aula/alumno
+    // para buscar tareas — se habilita recién cuando exista un threadId.
+    if (_threadId == null) return _clearMentions();
     final text = _controller.text;
     final cursor = _controller.selection.baseOffset;
     if (cursor < 0) return _clearMentions();
@@ -354,7 +385,7 @@ class _ThreadPageState extends State<ThreadPage> with WidgetsBindingObserver {
     _mentionDebounce?.cancel();
     _mentionDebounce = Timer(const Duration(milliseconds: 250), () async {
       try {
-        final results = await _repo.searchMentions(widget.threadId, query);
+        final results = await _repo.searchMentions(_threadId!, query);
         if (mounted && _mentionStart == at) setState(() => _mentionResults = results);
       } catch (_) {
         // Sin conexión momentánea: no interrumpe la escritura, solo no
@@ -419,7 +450,9 @@ class _ThreadPageState extends State<ThreadPage> with WidgetsBindingObserver {
   Future<void> _openClassroomTask(String refId) async {
     String? link;
     try {
-      link = await _repo.getClassroomTaskLink(widget.threadId, refId);
+      // Solo se llega acá tocando una mención de un mensaje ya renderizado
+      // — el hilo ya existe en ese momento.
+      link = await _repo.getClassroomTaskLink(_threadId!, refId);
     } catch (_) {
       link = null;
     }
@@ -458,7 +491,24 @@ class _ThreadPageState extends State<ThreadPage> with WidgetsBindingObserver {
     setState(() => _pendingMessages = [..._pendingMessages, pending]);
     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
     try {
-      final sent = await _repo.sendMessage(widget.threadId, body);
+      var threadId = _threadId;
+      if (threadId == null) {
+        threadId = await _repo.openThread(
+          recipientId: widget.recipientId!,
+          studentId: widget.studentId,
+          firstMessageBody: body,
+        );
+        if (!mounted || !_guard.isAccountCurrent(epoch)) return;
+        setState(() {
+          _threadId = threadId;
+          _pendingMessages = _pendingMessages.where((m) => m.id != tempId).toList();
+        });
+        InboxSyncService.instance.refresh();
+        await _load(forceScroll: true);
+        return;
+      }
+
+      final sent = await _repo.sendMessage(threadId, body);
       if (!mounted || !_guard.isAccountCurrent(epoch)) return;
       final confirmed = ThreadMessage(
         id: sent.id,
@@ -472,13 +522,13 @@ class _ThreadPageState extends State<ThreadPage> with WidgetsBindingObserver {
         _pendingMessages = _pendingMessages.where((m) => m.id != tempId).toList();
         if (!alreadyPresent) _messages = [...(_messages ?? []), confirmed];
       });
-      _cache[widget.threadId] = ThreadMessagesPage(
+      _cache[threadId] = ThreadMessagesPage(
         messages: _messages!,
         otherLastReadAt: _otherLastReadAt,
         otherLastActiveAt: _otherLastActiveAt,
       );
-      ThreadsLocalStore.saveMessage(widget.threadId, confirmed).catchError((e, st) {
-        debugPrint('[ThreadPage] saveMessage falló (hilo ${widget.threadId}): $e\n$st');
+      ThreadsLocalStore.saveMessage(threadId, confirmed).catchError((e, st) {
+        debugPrint('[ThreadPage] saveMessage falló (hilo $threadId): $e\n$st');
       });
       WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
     } catch (e) {
@@ -518,14 +568,18 @@ class _ThreadPageState extends State<ThreadPage> with WidgetsBindingObserver {
               padding: const EdgeInsets.fromLTRB(13, 13, 13, 13),
               child: Row(
                 children: [
-                  GestureDetector(
-                    onTap: () => Navigator.pop(context),
-                    child: Container(
-                      width: 34,
-                      height: 34,
-                      decoration: const BoxDecoration(color: _kHeaderPillBg, shape: BoxShape.circle),
-                      alignment: Alignment.center,
-                      child: SvgPicture.string(_kSvgBackChevron, width: 15, height: 12),
+                  Container(
+                    width: 34,
+                    height: 34,
+                    clipBehavior: Clip.antiAlias,
+                    decoration: BoxDecoration(color: _kHeaderPillBg, borderRadius: BorderRadius.circular(20)),
+                    child: PressTint(
+                      onTap: () => Navigator.pop(context),
+                      tintColor: pressedTint(_kHeaderPillBg),
+                      borderRadius: BorderRadius.circular(20),
+                      child: Center(
+                        child: SvgPicture.string(_kSvgBackChevron, width: 15, height: 12),
+                      ),
                     ),
                   ),
                   Expanded(
@@ -566,14 +620,19 @@ class _ThreadPageState extends State<ThreadPage> with WidgetsBindingObserver {
                         ),
                         const SizedBox(width: 4),
                         Flexible(
-                          child: Text(widget.title,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                  color: _kMsgDark,
-                                  height: 1.2)),
+                          child: Builder(builder: (context) {
+                            final role = _roleLabel(widget.otherRole);
+                            final text = role != null ? '$role.\n${widget.title}' : widget.title;
+                            return Text(text,
+                                textAlign: TextAlign.center,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                    color: _kMsgDark,
+                                    height: 1.2));
+                          }),
                         ),
                       ],
                     ),
@@ -752,8 +811,13 @@ class _Bubble extends StatelessWidget {
     this.onRetry,
   });
 
-  String _time(DateTime dt) =>
-      '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+  // Mismo criterio que InboxPage._timeLabel: 12 horas + a. m./p. m., nunca
+  // formato de 24 horas.
+  String _time(DateTime dt) {
+    final h = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+    final period = dt.hour < 12 ? 'a. m.' : 'p. m.';
+    return '$h:${dt.minute.toString().padLeft(2, '0')} $period';
+  }
 
   Widget _statusIcon() {
     final color = _kOffWhite.withValues(alpha: 0.7);
@@ -824,11 +888,15 @@ class _Bubble extends StatelessWidget {
 
   Widget _buildTaskCard(BuildContext context, List<RegExpMatch> mentions) {
     final plainText = message.body.replaceAll(_mentionRe, '').trim();
+    final bg = isMine
+        ? (message.isFailed ? _kBubbleMine.withValues(alpha: 0.6) : _kBubbleMine)
+        : Colors.white;
+    final textColor = isMine ? _kOffWhite : _kTextGray;
     return Container(
       constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: bg,
         borderRadius: BorderRadius.only(
           topLeft: const Radius.circular(14),
           topRight: const Radius.circular(14),
@@ -845,17 +913,28 @@ class _Bubble extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (plainText.isNotEmpty) ...[
-                  Text(plainText, style: const TextStyle(color: _kTextGray, fontSize: 12, height: 1.3)),
+                  Text(plainText, style: TextStyle(color: textColor, fontSize: 12, height: 1.3)),
                   const SizedBox(height: 9),
                 ],
                 for (final m in mentions) ...[
-                  _TaskTitleRow(title: m.group(1)!),
+                  _TaskTitleRow(title: m.group(1)!, isMine: isMine),
                   const SizedBox(height: 9),
                 ],
                 Align(
                   alignment: Alignment.centerRight,
-                  child: Text(_time(message.sentAt),
-                      style: const TextStyle(fontSize: 10, color: _kTextGray)),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        message.isFailed ? 'No enviado · toca para reintentar' : _time(message.sentAt),
+                        style: TextStyle(fontSize: 10, color: textColor),
+                      ),
+                      if (isMine) ...[
+                        const SizedBox(width: 4),
+                        _statusIcon(),
+                      ],
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -865,6 +944,7 @@ class _Bubble extends StatelessWidget {
               type: m.group(2)!,
               refId: m.group(3)!,
               onOpen: onOpenMention,
+              isMine: isMine,
             ),
         ],
       ),
@@ -874,22 +954,28 @@ class _Bubble extends StatelessWidget {
 
 class _TaskTitleRow extends StatelessWidget {
   final String title;
-  const _TaskTitleRow({required this.title});
+  final bool isMine;
+  const _TaskTitleRow({required this.title, required this.isMine});
 
   @override
   Widget build(BuildContext context) {
+    final color = isMine ? _kOffWhite : _kClipboardBlue;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
           padding: const EdgeInsets.only(top: 2),
-          child: SvgPicture.string(_kSvgClipboardList, width: 8, height: 11),
+          child: SvgPicture.string(
+            _kSvgClipboardList,
+            width: 8,
+            height: 11,
+            colorFilter: isMine ? ColorFilter.mode(color, BlendMode.srcIn) : null,
+          ),
         ),
         const SizedBox(width: 8),
         Expanded(
           child: Text(title,
-              style: const TextStyle(
-                  fontSize: 11, fontWeight: FontWeight.w500, color: _kClipboardBlue)),
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: color)),
         ),
       ],
     );
@@ -900,15 +986,19 @@ class _MentionLink extends StatelessWidget {
   final String type;
   final String refId;
   final void Function(String type, String refId) onOpen;
+  final bool isMine;
   const _MentionLink({
     required this.type,
     required this.refId,
     required this.onOpen,
+    required this.isMine,
   });
 
   @override
   Widget build(BuildContext context) {
     final isClassroom = type == 'gc-coursework';
+    final accent = isMine ? _kOffWhite : _kAccent;
+    final dividerColor = isMine ? _kOffWhite.withValues(alpha: 0.3) : _kCardDivider;
     return GestureDetector(
       onTap: () => onOpen(type, refId),
       behavior: HitTestBehavior.opaque,
@@ -917,7 +1007,7 @@ class _MentionLink extends StatelessWidget {
           const SizedBox(height: 5),
           // El separador va pegado arriba de "Ver en classroom", no de todo
           // el bloque de mención — y llega de borde a borde de la tarjeta.
-          const Divider(height: 1, thickness: 1, color: _kCardDivider),
+          Divider(height: 1, thickness: 1, color: dividerColor),
           const SizedBox(height: 10),
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 9),
@@ -926,18 +1016,23 @@ class _MentionLink extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (isClassroom) ...[
+                    // Ícono de marca oficial de Google Classroom — se deja
+                    // intacto (no se retiñe) aunque el fondo sea lila.
                     Image.asset('assets/icons/google_classroom_icon.png', width: 15, height: 15),
                     const SizedBox(width: 6),
                   ] else ...[
-                    SvgPicture.string(_kSvgClipboardList, width: 8, height: 11),
+                    SvgPicture.string(
+                      _kSvgClipboardList,
+                      width: 8,
+                      height: 11,
+                      colorFilter: isMine ? ColorFilter.mode(accent, BlendMode.srcIn) : null,
+                    ),
                     const SizedBox(width: 6),
                   ],
                   Text(isClassroom ? 'Ver en classroom' : 'Ver tarea',
-                      style:
-                          const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _kAccent)),
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: accent)),
                   const SizedBox(width: 6),
-                  const Text('›',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: _kAccent)),
+                  Text('›', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: accent)),
                 ],
               ),
             ),
@@ -994,18 +1089,22 @@ class _Composer extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 3),
-            GestureDetector(
-              onTap: onSend,
-              child: Container(
-                width: 36,
-                height: 35,
-                decoration: BoxDecoration(
-                  color: _kAccent,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: _kBg),
+            Container(
+              width: 36,
+              height: 35,
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                color: _kAccent,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: _kBg),
+              ),
+              child: PressTint(
+                onTap: onSend,
+                tintColor: pressedTint(_kAccent),
+                borderRadius: BorderRadius.circular(20),
+                child: Center(
+                  child: SvgPicture.string(_kSvgPaperPlane, width: 16, height: 18),
                 ),
-                alignment: Alignment.center,
-                child: SvgPicture.string(_kSvgPaperPlane, width: 16, height: 18),
               ),
             ),
           ],

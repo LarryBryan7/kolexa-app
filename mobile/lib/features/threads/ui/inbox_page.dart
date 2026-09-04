@@ -8,6 +8,7 @@ import '../../../core/services/push_notifications_service.dart';
 import '../../../core/utils/cached_avatar.dart';
 import '../../auth/bloc/auth_bloc.dart';
 import '../../auth/bloc/auth_state.dart';
+import '../data/inbox_sync_service.dart';
 import '../data/staleness_guard.dart';
 import '../data/threads_local_store.dart';
 import '../data/threads_repository.dart';
@@ -80,6 +81,10 @@ class InboxPage extends StatefulWidget {
     _InboxPageState._guard.invalidateAccount();
   }
 
+  static void primeCache(List<ThreadSummary> threads) {
+    _InboxPageState._cachedThreads = threads;
+  }
+
   @visibleForTesting
   static List<ThreadSummary>? get debugCachedThreads => _InboxPageState._cachedThreads;
 
@@ -112,9 +117,16 @@ class _InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
     _refresh(showErrorIfEmpty: true);
     PushNotificationsService.instance.addDataRefreshListener(_handleDataRefresh);
     WidgetsBinding.instance.addObserver(this);
+    InboxSyncService.instance.version.addListener(_onBackgroundSync);
     _searchController.addListener(() {
       setState(() => _searchQuery = _searchController.text.trim().toLowerCase());
     });
+  }
+
+  void _onBackgroundSync() {
+    if (!mounted) return;
+    final fresh = _cachedThreads;
+    if (fresh != null) setState(() => _threads = fresh);
   }
 
   @override
@@ -126,6 +138,7 @@ class _InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     PushNotificationsService.instance.removeDataRefreshListener(_handleDataRefresh);
+    InboxSyncService.instance.version.removeListener(_onBackgroundSync);
     _searchController.dispose();
     super.dispose();
   }
@@ -196,6 +209,7 @@ class _InboxPageState extends State<InboxPage> with WidgetsBindingObserver {
           title: t.otherParticipant?.name ?? 'Conversación',
           avatarUrl: t.otherParticipant?.avatar,
           online: t.otherParticipant?.online ?? false,
+          otherRole: t.otherParticipant?.role,
           studentId: t.studentId,
           studentName: t.studentName,
         ),

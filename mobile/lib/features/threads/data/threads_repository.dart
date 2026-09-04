@@ -31,16 +31,21 @@ class MentionCandidate {
 class ThreadStudentRef {
   final String id;
   final String name;
-  const ThreadStudentRef({required this.id, required this.name});
+  final String? avatar;
+  const ThreadStudentRef({required this.id, required this.name, this.avatar});
 
-  factory ThreadStudentRef.fromJson(Map<String, dynamic> json) =>
-      ThreadStudentRef(id: json['id'] as String, name: json['name'] as String);
+  factory ThreadStudentRef.fromJson(Map<String, dynamic> json) => ThreadStudentRef(
+        id: json['id'] as String,
+        name: json['name'] as String,
+        avatar: json['avatar'] as String?,
+      );
 }
 
 class Contact {
   final String userId;
   final String name;
   final String? avatar;
+  final bool online;
   final String role;
   final List<ThreadStudentRef> students;
 
@@ -48,6 +53,7 @@ class Contact {
     required this.userId,
     required this.name,
     required this.avatar,
+    this.online = false,
     required this.role,
     required this.students,
   });
@@ -57,6 +63,7 @@ class Contact {
       userId: json['userId'] as String,
       name: json['name'] as String,
       avatar: json['avatar'] as String?,
+      online: json['online'] as bool? ?? false,
       role: json['role'] as String,
       students: (json['students'] as List<dynamic>? ?? [])
           .map((s) => ThreadStudentRef.fromJson(s as Map<String, dynamic>))
@@ -90,11 +97,13 @@ class ThreadOtherParticipant {
   final String name;
   final String? avatar;
   final bool online;
+  final String? role;
   const ThreadOtherParticipant({
     required this.id,
     required this.name,
     this.avatar,
     this.online = false,
+    this.role,
   });
 
   factory ThreadOtherParticipant.fromJson(Map<String, dynamic> json) => ThreadOtherParticipant(
@@ -102,6 +111,7 @@ class ThreadOtherParticipant {
         name: json['name'] as String,
         avatar: json['avatar'] as String?,
         online: json['online'] as bool? ?? false,
+        role: json['role'] as String?,
       );
 }
 

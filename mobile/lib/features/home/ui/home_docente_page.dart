@@ -16,6 +16,7 @@ import '../../auth/bloc/auth_state.dart';
 import '../../teachers/data/teacher_repository.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../attendance/ui/attendance_page.dart';
+import '../../threads/data/inbox_sync_service.dart';
 import '../../threads/ui/inbox_page.dart';
 
 // ── Paleta (compartida con el Home del padre) ─────────────
@@ -26,10 +27,11 @@ const _kTextDark = Color(0xFF1E1B29);
 const _kTextGray = Color(0xFF666666);
 const _kChevron = Color(0xFF8E8E93);
 const _kNavInact = Color(0xFF707070);
-const _kNavPillBg = Color(0xFFEFE8F7);
-const _kNavActive = Color(0xFF391499);
+const _kNavPillBg = Color(0xFFF3E6FF);
+const _kNavActive = Color(0xFF972FFF);
 const _kSuccessText = Color(0xFF1F6B44);
 const _kAmber = Color(0xFF96650C);
+const _kNavBadge = Color(0xFF9F6CF3);
 
 // ── Paleta propia del aviso "plan semanal" ────────────────
 const _kBannerBg = Color(0xFFFAEED3);
@@ -103,6 +105,9 @@ class _HomeDocentePageState extends State<HomeDocentePage>
   @override
   void initState() {
     super.initState();
+    final pendingTab = InboxSyncService.instance.consumeChatsTabRequest();
+    if (pendingTab != null) _navIndex = pendingTab;
+    InboxSyncService.instance.chatsTabRequests.addListener(_onChatsTabRequested);
     WidgetsBinding.instance.addObserver(this);
     final repo = TeacherRepository(context.read<ApiClient>());
     _homeDataFuture = repo.getHomeData();
@@ -156,9 +161,15 @@ class _HomeDocentePageState extends State<HomeDocentePage>
     setState(() => _homeDataFuture = repo.getHomeData());
   }
 
+  void _onChatsTabRequested() {
+    final pendingTab = InboxSyncService.instance.consumeChatsTabRequest();
+    if (pendingTab != null && mounted) setState(() => _navIndex = pendingTab);
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    InboxSyncService.instance.chatsTabRequests.removeListener(_onChatsTabRequested);
     super.dispose();
   }
 
@@ -1137,7 +1148,7 @@ class _BottomNavDocente extends StatelessWidget {
   static const _items = [
     (_kSvgNavHouseOutline, _kSvgNavHouseFill, 'Inicio'),
     (_kSvgNavChatOutline, _kSvgNavChatFill, 'Chats'),
-    (_kSvgNavCalendarOutline, _kSvgNavCalendarFill, 'Calendario'),
+    (_kSvgNavCalendarOutline, _kSvgNavCalendarFill, 'Pendientes'),
     (_kSvgNavUserOutline, _kSvgNavUserFill, 'Perfil'),
   ];
 
@@ -1171,6 +1182,7 @@ class _BottomNavDocente extends StatelessWidget {
                         children: [
                           Stack(
                             alignment: Alignment.center,
+                            clipBehavior: Clip.none,
                             children: [
                               // El pill "crece" desde el centro al activarse
                               // (efecto resorte), en vez de aparecer de golpe.
@@ -1201,6 +1213,36 @@ class _BottomNavDocente extends StatelessWidget {
                                       ColorFilter.mode(color, BlendMode.srcIn),
                                 ),
                               ),
+                              if (label == 'Chats')
+                                Positioned(
+                                  top: -2,
+                                  right: -10,
+                                  child: ValueListenableBuilder<int>(
+                                    valueListenable: InboxSyncService.instance.unreadCount,
+                                    builder: (context, count, _) {
+                                      if (count <= 0) return const SizedBox.shrink();
+                                      return Container(
+                                        constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                                        decoration: const BoxDecoration(
+                                          color: _kNavBadge,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: Center(
+                                          child: Text(
+                                            count > 9 ? '9+' : '$count',
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 9,
+                                              fontWeight: FontWeight.w700,
+                                              height: 1,
+                                            ),
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
                             ],
                           ),
                           const SizedBox(height: 4),

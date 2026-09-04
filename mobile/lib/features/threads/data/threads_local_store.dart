@@ -178,7 +178,9 @@ class ThreadsLocalStore {
         name: c.name,
         avatar: Value(c.avatar),
         role: c.role,
-        studentsJson: jsonEncode(c.students.map((s) => {'id': s.id, 'name': s.name}).toList()),
+        studentsJson: jsonEncode(
+          c.students.map((s) => {'id': s.id, 'name': s.name, 'avatar': s.avatar}).toList(),
+        ),
         sortIndex: index,
       );
 
@@ -189,7 +191,10 @@ class ThreadsLocalStore {
         role: row.role,
         students: (jsonDecode(row.studentsJson) as List<dynamic>)
             .map((s) => ThreadStudentRef(
-                id: (s as Map<String, dynamic>)['id'] as String, name: s['name'] as String))
+                  id: (s as Map<String, dynamic>)['id'] as String,
+                  name: s['name'] as String,
+                  avatar: s['avatar'] as String?,
+                ))
             .toList(),
       );
 }

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/material.dart' show Color;
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -125,13 +126,17 @@ class PushNotificationsService {
     try {
       _fcmToken = await _messaging.getToken();
       final token = _fcmToken;
+      debugPrint('[PUSH] getToken() → ${token == null ? "null" : "ok (${token.length} chars)"}');
       if (token != null) onTokenRefresh?.call(token);
-    } catch (_) {
+    } catch (e, st) {
       // Sin Google Play Services (emuladores sin GMS) — ignorar
+      debugPrint('[PUSH] getToken() falló: $e\n$st');
     }
   }
 
   void _handleForegroundMessage(RemoteMessage message) {
+    debugPrint('[PUSH] mensaje en foreground recibido: data=${message.data} '
+        'notification=${message.notification != null ? "sí" : "no"}');
     if (message.data['refresh'] == 'true') {
       // Copia de la lista: un listener podría des-suscribirse a sí mismo
       // durante la iteración (ej. un dispose que corre en el mismo tick).

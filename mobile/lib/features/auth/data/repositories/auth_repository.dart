@@ -36,7 +36,10 @@ class AuthRepository {
   Future<void> syncPushToken(String firebaseToken) async {
     try {
       await _remoteDataSource.syncPushToken(firebaseToken);
-    } catch (_) {}
+      debugPrint('[PUSH] syncPushToken() → token enviado al backend ok');
+    } catch (e, st) {
+      debugPrint('[PUSH] syncPushToken() falló: $e\n$st');
+    }
   }
 
   // ── loginWithGoogle ───────────────────────────────────────
