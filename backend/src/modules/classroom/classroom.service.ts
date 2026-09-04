@@ -257,12 +257,17 @@ export class ClassroomService {
       courses.map(async (course: any) => {
         const [studentsResult, cwResult] = await Promise.all([
           (async () => {
-            let fetchedStudents: any[] = [];
+            const fetchedStudents: any[] = [];
             try {
-              const { data: studentsData } = await classroomApi.courses.students.list({
-                courseId: course.id!,
-              });
-              fetchedStudents = studentsData.students ?? [];
+              let pageToken: string | undefined;
+              do {
+                const { data: studentsData } = await classroomApi.courses.students.list({
+                  courseId: course.id!,
+                  pageToken,
+                });
+                fetchedStudents.push(...(studentsData.students ?? []));
+                pageToken = studentsData.nextPageToken ?? undefined;
+              } while (pageToken);
             } catch (_) {}
             return fetchedStudents;
           })(),
@@ -396,20 +401,26 @@ export class ClassroomService {
       entries.forEach(([googleId], i) => newlyCreatedIdByGoogleId.set(googleId, created[i].id));
       console.log(`[TEACHER-SYNC] alumnos-nuevos creados=${created.length}`);
 
-      // Si el curso de Google ya está enlazado a un aula institucional, matricular
-      // de una vez: sin esto el padre nunca vería el horario del alumno.
-      const courseLinks = await this.prisma.gcCourseLink.findMany({
-        where: { schoolId },
-        select: { googleCourseId: true, classroomCourse: { select: { classroomId: true } } },
-      });
+      const [courseLinks, teacherClassrooms] = await Promise.all([
+        this.prisma.gcCourseLink.findMany({
+          where: { schoolId },
+          select: { googleCourseId: true, classroomCourse: { select: { classroomId: true } } },
+        }),
+        this.prisma.classroomCourse.findMany({
+          where: { teacherId: userId },
+          select: { classroomId: true },
+          distinct: ['classroomId'],
+        }),
+      ]);
       const classroomIdByGoogleCourseId = new Map<string, bigint>();
       for (const link of courseLinks) {
         classroomIdByGoogleCourseId.set(link.googleCourseId, link.classroomCourse.classroomId);
       }
+      const fallbackClassroomId = teacherClassrooms.length === 1 ? teacherClassrooms[0].classroomId : null;
       const academicYear = new Date().getFullYear();
       const enrollmentPairs = new Map<string, { studentId: bigint; classroomId: bigint }>();
       for (const { course, fetchedStudents } of perCourse) {
-        const classroomId = classroomIdByGoogleCourseId.get(course.id!);
+        const classroomId = classroomIdByGoogleCourseId.get(course.id!) ?? fallbackClassroomId;
         if (!classroomId) continue;
         for (const s of fetchedStudents) {
           const newId = newlyCreatedIdByGoogleId.get(s.userId);

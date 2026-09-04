@@ -51,6 +51,7 @@ function makeService(opts: {
   schoolId: bigint | null;
   gcCourseLinks: any[];
   existingStudents?: { id: bigint; firstName: string; lastName: string | null }[];
+  teacherClassroomIds?: bigint[];
 }) {
   let studentIdCounter = 500n;
 
@@ -87,6 +88,11 @@ function makeService(opts: {
     },
     gcCourseLink: {
       findMany: jest.fn().mockResolvedValue(opts.gcCourseLinks),
+    },
+    classroomCourse: {
+      findMany: jest
+        .fn()
+        .mockResolvedValue((opts.teacherClassroomIds ?? []).map((classroomId) => ({ classroomId }))),
     },
     gcCourseStudent: {
       findMany: jest.fn().mockResolvedValue([]),
@@ -139,6 +145,46 @@ describe('ClassroomService.syncTeacher — alta automática de alumnos nuevos', 
 
     expect(findRawCall(prisma.$queryRaw, 'INSERT INTO "students"')).toBeDefined();
     expect(findRawCall(prisma.$executeRaw, 'student_enrollments')).toBeDefined();
+  });
+
+  it('matricula por respaldo cuando no hay gc_course_link pero el docente tiene UNA sola aula asignada', async () => {
+    (google.classroom as jest.Mock).mockReturnValue(
+      makeFakeClassroomApi({
+        courseId: 'gc-course-4',
+        studentGoogleId: 'gc-student-4',
+        studentFullName: 'Mario Rojas',
+      }),
+    );
+    const { service, prisma } = makeService({
+      schoolId: 10n,
+      gcCourseLinks: [],
+      teacherClassroomIds: [55n],
+    });
+
+    await service.syncTeacher(4n);
+
+    expect(findRawCall(prisma.$queryRaw, 'INSERT INTO "students"')).toBeDefined();
+    expect(findRawCall(prisma.$executeRaw, 'student_enrollments')).toBeDefined();
+  });
+
+  it('NO matricula por respaldo si el docente tiene 2+ aulas asignadas (ambiguo)', async () => {
+    (google.classroom as jest.Mock).mockReturnValue(
+      makeFakeClassroomApi({
+        courseId: 'gc-course-5',
+        studentGoogleId: 'gc-student-5',
+        studentFullName: 'Carla Díaz',
+      }),
+    );
+    const { service, prisma } = makeService({
+      schoolId: 10n,
+      gcCourseLinks: [],
+      teacherClassroomIds: [55n, 56n],
+    });
+
+    await service.syncTeacher(5n);
+
+    expect(findRawCall(prisma.$queryRaw, 'INSERT INTO "students"')).toBeDefined();
+    expect(findRawCall(prisma.$executeRaw, 'student_enrollments')).toBeUndefined();
   });
 
   it('no crea Student ni consulta gc_course_links si todos los alumnos ya matchean por nombre', async () => {
