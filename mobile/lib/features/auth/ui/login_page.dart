@@ -2,11 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:go_router/go_router.dart';
 import '../bloc/auth_bloc.dart';
 import '../bloc/auth_event.dart';
 import '../bloc/auth_state.dart';
-import '../../../core/router/app_router.dart';
 import '../../../core/widgets/kolexa_logo.dart';
 import '../../../core/services/push_notifications_service.dart';
 import '../../../core/services/google_sign_in_service.dart';
@@ -118,14 +116,6 @@ class _LoginPageState extends State<LoginPage> {
       backgroundColor: _kBg,
       body: BlocConsumer<AuthBloc, AuthState>(
         listener: (context, state) {
-          if (state is AuthAuthenticated) {
-            final missingPhoto = state.user.children.any((c) => c.avatarUrl == null);
-            if (missingPhoto) {
-              context.go(AppRouter.hijosEncontrados, extra: state.user);
-            } else {
-              context.go(AppRouter.home);
-            }
-          }
           if (state is AuthError) {
             _showError(_invitationErrorMessages[state.message] ?? state.message);
           }

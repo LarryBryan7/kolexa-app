@@ -11,7 +11,6 @@ import '../../features/home/ui/home_v2_page.dart';
 import '../../features/home/ui/home_docente_page.dart';
 import '../../features/home/ui/home_director_page.dart';
 import '../../features/onboarding/ui/hijos_encontrados_page.dart';
-import '../../features/auth/data/models/user_model.dart';
 import '../../features/classroom/ui/classroom_page.dart';
 import '../../features/classroom/bloc/classroom_bloc.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -100,9 +99,11 @@ class AppRouter {
           return location == splash ? null : splash;
         }
 
-        // Sesión resuelta: navegar al destino.
         if (authState is AuthAuthenticated) {
-          if (location == splash || _publicFlow.contains(location)) return home;
+          if (location == splash || _publicFlow.contains(location)) {
+            final missingPhoto = authState.user.children.any((c) => c.avatarUrl == null);
+            return missingPhoto ? hijosEncontrados : home;
+          }
           return null;
         }
 
@@ -126,8 +127,13 @@ class AppRouter {
         ),
         GoRoute(
           path: hijosEncontrados,
-          pageBuilder: (_, state) =>
-              _fadePage(state, HijosEncontradosPage(user: state.extra as UserModel)),
+          pageBuilder: (context, state) {
+            final authState = context.read<AuthBloc>().state;
+            if (authState is! AuthAuthenticated) {
+              return _fadePage(state, const SizedBox.shrink());
+            }
+            return _fadePage(state, HijosEncontradosPage(user: authState.user));
+          },
         ),
         GoRoute(
           path: home,
