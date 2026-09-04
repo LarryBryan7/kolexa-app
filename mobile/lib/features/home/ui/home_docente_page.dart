@@ -216,7 +216,7 @@ class _HomeDocentePageState extends State<HomeDocentePage>
     try {
       final repo = TeacherRepository(context.read<ApiClient>());
       final url = await repo.getClassroomAuthUrl();
-      final launched = await launchUrl(Uri.parse(url), mode: LaunchMode.inAppBrowserView);
+      final launched = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
       if (!launched && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('No se pudo abrir el navegador')),

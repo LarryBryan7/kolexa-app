@@ -336,7 +336,9 @@ class _HomeV2PageState extends State<HomeV2Page> with WidgetsBindingObserver {
     setState(() => _connectingClassroom = true);
     try {
       final url = await ClassroomRepository(context.read<ApiClient>()).getAuthUrl(studentId);
-      final launched = await launchUrl(Uri.parse(url), mode: LaunchMode.inAppBrowserView);
+      // externalApplication: ver comentario en home_docente_page._connectClassroom
+      // — inAppBrowserView dejaba en blanco el consentimiento de Google en Pixel.
+      final launched = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
       if (!launched && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('No se pudo abrir el navegador')),
