@@ -22,6 +22,12 @@ function googleTokenExpiredException(): UnauthorizedException {
   });
 }
 
+function extractGoogleErrorMessage(e: any): string {
+  const errData = e?.response?.data?.error;
+  if (typeof errData === 'string') return errData;
+  return errData?.message ?? e?.message ?? '';
+}
+
 @Controller('classroom')
 export class ClassroomController {
   constructor(private readonly classroomService: ClassroomService) {}
@@ -115,7 +121,7 @@ export class ClassroomController {
     try {
       return await this.classroomService.syncTeacher(BigInt(req.user.sub));
     } catch (e: any) {
-      const msg: string = e?.response?.data?.error ?? e?.message ?? '';
+      const msg: string = extractGoogleErrorMessage(e);
       if (msg.includes('invalid_grant') || msg.includes('invalid_token')) {
         throw googleTokenExpiredException();
       }
@@ -219,7 +225,7 @@ export class ClassroomController {
     try {
       return await this.classroomService.syncStudent(studentId, force === 'true');
     } catch (e: any) {
-      const msg: string = e?.response?.data?.error ?? e?.message ?? '';
+      const msg: string = extractGoogleErrorMessage(e);
       if (msg.includes('invalid_grant') || msg.includes('invalid_token')) {
         throw googleTokenExpiredException();
       }
@@ -254,7 +260,7 @@ export class ClassroomController {
     try {
       return await this.classroomService.getOverview(studentId);
     } catch (e: any) {
-      const msg: string = e?.response?.data?.error ?? e?.message ?? '';
+      const msg: string = extractGoogleErrorMessage(e);
       if (msg.includes('invalid_grant') || msg.includes('invalid_token')) {
         throw googleTokenExpiredException();
       }
