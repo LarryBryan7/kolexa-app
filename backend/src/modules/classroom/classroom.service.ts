@@ -1230,7 +1230,7 @@ export class ClassroomService {
       teacher_name: string | null;
     };
 
-    const [sessionRows, studentForAvatar] = await Promise.all([
+    const [sessionRows, studentForAvatar, googleToken] = await Promise.all([
       this.prisma.$queryRaw<SessionRow[]>`
         SELECT s.id, s.teacher_id, s.created_at, s.photo_urls,
                (SELECT r.status FROM gc_attendance_records r WHERE r.session_id = s.id ORDER BY r.id LIMIT 1) AS status
@@ -1240,6 +1240,7 @@ export class ClassroomService {
         LIMIT 1
       `,
       this.prisma.student.findUnique({ where: { id: studentId }, select: { avatar: true } }),
+      this.prisma.googleToken.findUnique({ where: { studentId }, select: { id: true } }),
     ]);
 
     const [[blockRows, tokenRows, upcomingRows], avatarUrls] = await Promise.all([
@@ -1304,6 +1305,7 @@ export class ClassroomService {
       studentForAvatar?.avatar
         ? this.storage.getSignedUrls([studentForAvatar.avatar], 3600, 'avatars')
         : Promise.resolve([]),
+      googleToken ? this.syncStudent(studentId).catch(() => undefined) : Promise.resolve(undefined),
     ]);
     const avatarUrl = avatarUrls[0] ?? null;
 

@@ -4,6 +4,13 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'interceptors/auth_interceptor.dart';
 
+class GoogleTokenExpiredException implements Exception {
+  const GoogleTokenExpiredException();
+  @override
+  String toString() =>
+      'La conexión con Google Classroom expiró. Vuelve a conectarla desde el colegio.';
+}
+
 class ApiClient {
   static const String _devHost = String.fromEnvironment(
     'KOLEXA_DEV_HOST',
@@ -151,9 +158,7 @@ class ApiClient {
             return Exception('Sesión expirada. Por favor inicia sesión de nuevo.');
           }
           if (code == 'GOOGLE_TOKEN_EXPIRED') {
-            return Exception(
-              'La conexión con Google Classroom expiró. Vuelve a conectarla desde el colegio.',
-            );
+            return const GoogleTokenExpiredException();
           }
           return Exception(messageStr);
         }

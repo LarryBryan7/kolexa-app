@@ -396,7 +396,23 @@ class _HomeV2PageState extends State<HomeV2Page> with WidgetsBindingObserver {
       _rememberConnected(studentId, false);
       return;
     }
-    try { await repo.sync(studentId); } catch (_) {}
+    try {
+      await repo.sync(studentId);
+    } on GoogleTokenExpiredException {
+      if (!mounted) return;
+      setState(() {
+        _connectingClassroom = false;
+        _waitingClassroomConfirm = false;
+        _showManualVerify = false;
+        _classroomStatusFuture = Future.value(false);
+        _classroomConnected = false;
+      });
+      _rememberConnected(studentId, false);
+      return;
+    } catch (_) {
+      // Otros errores (red, etc.): no tumbar una conexión ya verificada por
+      // un fallo transitorio — se sigue igual que antes.
+    }
     if (!mounted) return;
     await _loadParentHome(studentId);
     if (!mounted) return;
