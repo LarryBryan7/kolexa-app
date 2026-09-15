@@ -15,9 +15,9 @@ class ApiClient {
   static final String _baseUrl = kReleaseMode
       ? (_useDevHost
           ? 'http://$_devHost:3000/api/v1/'
-          : 'https://kolexa-production.up.railway.app/api/v1/')
+          : 'https://kolexa.onrender.com/api/v1/')
       : (_useRailway
-          ? 'https://kolexa-production.up.railway.app/api/v1/'
+          ? 'https://kolexa.onrender.com/api/v1/'
           : 'http://$_devHost:3000/api/v1/');
 
   // La instancia de Dio que usamos para hacer peticiones
