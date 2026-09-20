@@ -295,3 +295,7 @@ Pantallas sugeridas, priorizando las que mejor muestran producto y complejidad r
 ## 🔒 Confidencialidad
 
 Este repositorio y este caso de estudio pueden hacer referencia a datos, nombres o configuraciones de colegios reales. Cualquier captura, dato de ejemplo o export debe anonimizarse antes de publicarse, y las credenciales (Firebase, Google OAuth, base de datos) nunca deben incluirse en el repositorio ni en la documentación pública.
+
+## 📄 Licencia
+
+Todos los derechos reservados. El código es visible solo con fines de evaluación (portafolio); no se permite su uso, copia, modificación ni distribución sin autorización escrita. Ver [LICENSE](LICENSE).
