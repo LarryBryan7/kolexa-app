@@ -6,6 +6,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { SupabaseStorageService } from '../storage/supabase-storage.service';
 import { UserPayload } from '../../common/decorators/current-user.decorator';
 import { isSchoolAdminOf } from '../../common/utils/school-staff-access';
+import { isDemoEmail } from '../../common/utils/demo-account';
 
 const STUDENT_SCOPES = [
   'https://www.googleapis.com/auth/classroom.courses.readonly',
@@ -196,6 +197,14 @@ export class ClassroomService {
     const diffMs = lastSyncedAt ? Date.now() - lastSyncedAt.getTime() : -1;
     const cacheHit = !!lastSyncedAt && diffMs < 60 * 1000;
     if (cacheHit) {
+      return { courses: cachedCourses, submissions: cachedSubmissions, cacheHit: true };
+    }
+
+    const teacherToken = await this.prisma.teacherGoogleToken.findUnique({
+      where: { userId },
+      select: { googleEmail: true },
+    });
+    if (isDemoEmail(teacherToken?.googleEmail)) {
       return { courses: cachedCourses, submissions: cachedSubmissions, cacheHit: true };
     }
     const t1 = Date.now();
@@ -822,6 +831,14 @@ export class ClassroomService {
     const cacheHit = !force && !!lastSyncedAt && diffMs < 15 * 60 * 1000;
     console.log(`[STUDENT-SYNC] start studentId=${studentId} cacheHit=${cacheHit} cachedCourses=${cachedCourses} cachedCourseworks=${cachedCourseworks}`);
     if (cacheHit) {
+      return { courses: cachedCourses, courseworks: cachedCourseworks, cacheHit: true };
+    }
+
+    const studentToken = await this.prisma.googleToken.findUnique({
+      where: { studentId },
+      select: { googleEmail: true },
+    });
+    if (isDemoEmail(studentToken?.googleEmail)) {
       return { courses: cachedCourses, courseworks: cachedCourseworks, cacheHit: true };
     }
 

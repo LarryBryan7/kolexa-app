@@ -10,6 +10,7 @@ import { AuthService } from './auth.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { StorageModule } from '../storage/storage.module';
+import { DemoService } from '../demo/demo.service';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { StorageModule } from '../storage/storage.module';
 
   providers: [
     AuthService,
+    DemoService,
 
     // JwtStrategy: define cómo extraer y validar el JWT de cada petición
     JwtStrategy,

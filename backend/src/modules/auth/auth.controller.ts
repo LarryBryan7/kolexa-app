@@ -15,6 +15,8 @@ import { ChangePasswordDto } from './dto/change-password.dto';
 import { RegisterWithTokenDto } from './dto/register.dto';
 import { GoogleLoginDto } from './dto/google-login.dto';
 import { Public } from '../../common/decorators/public.decorator';
+import { DemoService } from '../demo/demo.service';
+import { isDemoEmail } from '../../common/utils/demo-account';
 import { CurrentUser, UserPayload } from '../../common/decorators/current-user.decorator';
 
 // @Controller('auth') → todas las rutas tienen el prefijo /auth
@@ -22,16 +24,20 @@ import { CurrentUser, UserPayload } from '../../common/decorators/current-user.d
 @Controller('auth')
 export class AuthController {
   // NestJS inyecta AuthService automáticamente (Dependency Injection)
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly demoService: DemoService,
+  ) {}
 
   // ── POST /api/v1/auth/login ────────────────────────────
   @Public()
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  login(@Body() dto: LoginDto) {
+  async login(@Body() dto: LoginDto) {
     // @Body() extrae el body del request y lo valida con LoginDto
     // Si la validación falla, ValidationPipe lanza 400 automáticamente
+    if (isDemoEmail(dto.email)) await this.demoService.ensureFreshWithin(25_000);
     return this.authService.login(dto);
   }
 

@@ -6,7 +6,9 @@ import {
   BadRequestException,
   NotFoundException,
   ConflictException,
+  ForbiddenException,
 } from '@nestjs/common';
+import { isDemoEmail } from '../../common/utils/demo-account';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcrypt';
@@ -530,6 +532,10 @@ export class AuthService {
     });
 
     if (!user) throw new NotFoundException('Usuario no encontrado');
+
+    if (isDemoEmail(user.email)) {
+      throw new ForbiddenException('Las cuentas de demostración no pueden cambiar la contraseña');
+    }
 
     // Verificar que la contraseña actual es correcta
     const isValid = await bcrypt.compare(dto.currentPassword, user.passwordHash);

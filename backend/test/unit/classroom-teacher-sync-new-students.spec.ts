@@ -56,6 +56,7 @@ function makeService(opts: {
   let studentIdCounter = 500n;
 
   const prisma: any = {
+    teacherGoogleToken: { findUnique: jest.fn().mockResolvedValue(null) },
     $queryRaw: jest.fn((strings: TemplateStringsArray) => {
       const sql = strings.join(' ');
       if (sql.includes('gc_teacher_courses')) {

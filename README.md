@@ -4,6 +4,30 @@
 
 ---
 
+## 🧪 Prueba la demo
+
+Cuentas de demostración con datos ficticios, en un colegio aparte ("Colegio Demo Kolexa"). La contraseña de todas es **`Demo1234`**.
+
+| Rol | Usuario | Dónde probarla |
+|---|---|---|
+| Padre (2 hijos) | `padre@demo.kolexa.app` | App Android |
+| Padre (1 hijo) | `padre2@demo.kolexa.app` | App Android |
+| Docente | `docente@demo.kolexa.app` | App Android |
+| Administrador | `admin@demo.kolexa.app` | [Panel web](https://web-admin-six-rust.vercel.app) |
+
+**App Android:** descarga el APK desde [Releases](https://github.com/LarryBryan7/kolexa-app/releases/latest) e instálalo (hay que permitir "instalar apps desconocidas").
+
+**Qué probar**
+- **Padre:** el inicio con la asistencia de hoy y el horario, las tareas pendientes de la semana (Google Classroom simulado) y la mensajería con el docente.
+- **Docente:** tomar asistencia, subir fotos del salón y responder mensajes. El padre lo recibe en su app.
+- **Administrador:** aulas, alumnos, padres e importación masiva desde el panel web.
+
+**Notas**
+- El servidor es de un plan gratuito y se duerme por inactividad: el primer ingreso puede tardar hasta un minuto.
+- Los datos de la demo se reinician cada día y las cuentas demo no pueden cambiar la contraseña ni conectar una cuenta real de Google.
+
+---
+
 ## 🎯 El problema
 
 En la mayoría de colegios peruanos, la comunicación y la gestión operativa del día a día están repartidas entre herramientas que no se hablan entre sí: grupos de WhatsApp sin control de quién puede escribirle a quién, asistencia y notas en Excel o papel, autorización de recojo de alumnos manejada de palabra en portería, pagos sin seguimiento centralizado, y comunicados que se pierden en el ruido de un chat grupal.

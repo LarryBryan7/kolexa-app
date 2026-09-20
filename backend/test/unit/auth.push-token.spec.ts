@@ -6,7 +6,7 @@ const fakeUser: any = { sub: '15', email: 'x@x.com', roles: ['teacher'], schoolI
 
 function makeController(savePushToken = jest.fn().mockResolvedValue(undefined)) {
   const service: any = { savePushToken };
-  return { controller: new AuthController(service), service };
+  return { controller: new AuthController(service, {} as any), service };
 }
 
 describe('AuthController.syncPushToken — POST /auth/push-token', () => {

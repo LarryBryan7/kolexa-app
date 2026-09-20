@@ -12,6 +12,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "seed": "ts-node prisma/seed.ts",
+    "seed:demo": "ts-node prisma/seed-demo.ts",
     "test": "jest --testPathIgnorePatterns=test/integration test/concurrency",
     "test:integration": "jest --runInBand test/integration",
     "test:concurrency": "jest --runInBand test/concurrency",
